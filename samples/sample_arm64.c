@@ -17,6 +17,10 @@
 // mrs        x2, tpidrro_el0
 #define ARM64_MRS_CODE "\x62\xd0\x3b\xd5"
 
+// str        w11, [c13], #0
+// ldrb       w15, [c13], #0
+#define ARM64C_CODE "\xab\x05\x00\xb8\xaf\x05\x40\x38"
+
 // memory address where emulation starts
 #define ADDRESS 0x10000
 
@@ -197,6 +201,60 @@ static void test_arm64eb(void)
     uc_close(uc);
 }
 
+static void test_arm64c(void)
+{
+    uc_engine *uc;
+    uc_err err;
+    uc_hook trace1, trace2;
+
+    int128_t c11 = 0x12345678;    // C11 register
+    int128_t c13 = 0x10000 + 0x8; // C13 register, XXXR3: this must be a valid capability
+    int128_t c15 = 0x33;          // C15 register
+
+    printf("Emulate ARM64 C64 code\n");
+
+    // Initialize emulator in ARM C64 mode
+    err = uc_open(UC_ARCH_ARM64, UC_MODE_C64, &uc);
+    if (err) {
+        printf("Failed on uc_open() with error returned: %u (%s)\n", err,
+               uc_strerror(err));
+        return;
+    }
+
+    // map 2MB memory for this emulation
+    uc_mem_map(uc, ADDRESS, 2 * 1024 * 1024, UC_PROT_ALL);
+
+    // write machine code to be emulated to memory
+    uc_mem_write(uc, ADDRESS, ARM64C_CODE, sizeof(ARM64C_CODE) - 1);
+
+    // initialize machine registers
+    uc_reg_write(uc, UC_ARM64_REG_C11, &c11);
+    uc_reg_write(uc, UC_ARM64_REG_C13, &c13);
+    uc_reg_write(uc, UC_ARM64_REG_C15, &c15);
+
+    // tracing all basic blocks with customized callback
+    uc_hook_add(uc, &trace1, UC_HOOK_BLOCK, hook_block, NULL, 1, 0);
+
+    // tracing one instruction at ADDRESS with customized callback
+    uc_hook_add(uc, &trace2, UC_HOOK_CODE, hook_code, NULL, ADDRESS, ADDRESS);
+
+    // emulate machine code in infinite time (last param = 0), or when
+    // finishing all the code.
+    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_CODE) - 1, 0, 0);
+    if (err) {
+        printf("Failed on uc_emu_start() with error returned: %u\n", err);
+    }
+
+    // now print out some registers
+    printf(">>> Emulation done. Below is the CPU context\n");
+    printf(">>> As little endian, C15 should be 0x78:\n");
+
+    uc_reg_read(uc, UC_ARM64_REG_C15, &c15);
+    printf(">>> C15 = 0x%" PRIx64 "\n", c15);
+
+    uc_close(uc);
+}
+
 static void test_arm64_sctlr()
 {
     uc_engine *uc;
@@ -300,6 +358,9 @@ int main(int argc, char **argv, char **envp)
 
     printf("-------------------------\n");
     test_arm64eb();
+
+    printf("-------------------------\n");
+    test_arm64c();
 
     printf("-------------------------\n");
     test_arm64_sctlr();
