@@ -244,7 +244,7 @@ static void arm_semi_cb(CPUState *cs, target_ulong ret, target_ulong err)
 {
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
-    target_ulong reg0 = is_a64(env) ? env->xregs[0] : env->regs[0];
+    target_ulong reg0 = is_a64(env) ? arm_get_xreg(env, 0) : env->regs[0];
 
     if (ret == (target_ulong)-1) {
         errno = err;
@@ -266,7 +266,7 @@ static void arm_semi_cb(CPUState *cs, target_ulong ret, target_ulong err)
         }
     }
     if (is_a64(env)) {
-        env->xregs[0] = reg0;
+        arm_set_xreg(env, 0, reg0);
     } else {
         env->regs[0] = reg0;
     }
@@ -283,7 +283,7 @@ static target_ulong arm_flen_buf(ARMCPU *cpu)
     target_ulong sp;
 
     if (is_a64(env)) {
-        sp = env->xregs[31];
+        sp = arm_get_xreg(env, 31);
     } else {
         sp = env->regs[13];
     }
@@ -301,7 +301,7 @@ static void arm_semi_flen_cb(CPUState *cs, target_ulong ret, target_ulong err)
     cpu_memory_rw_debug(cs, arm_flen_buf(cpu) + 32, (uint8_t *)&size, 4, 0);
     size = be32_to_cpu(size);
     if (is_a64(env)) {
-        env->xregs[0] = size;
+        arm_set_xreg(env, 0, size);
     } else {
         env->regs[0] = size;
     }
@@ -325,7 +325,7 @@ static void arm_semi_open_cb(CPUState *cs, target_ulong ret, target_ulong err)
     }
 
     if (is_a64(env)) {
-        env->xregs[0] = ret;
+        arm_set_xreg(env, 0, ret);
     } else {
         env->regs[0] = ret;
     }
@@ -358,7 +358,7 @@ static target_ulong arm_gdb_syscall(ARMCPU *cpu, gdb_syscall_complete_cb cb,
      * doing something with the return value is not possible to make.
      */
 
-    return is_a64(env) ? env->xregs[0] : env->regs[0];
+    return is_a64(env) ? arm_get_xreg(env, 0); : env->regs[0];
 }
 
 /*
@@ -663,8 +663,8 @@ target_ulong do_arm_semihosting(CPUARMState *env)
 
     if (is_a64(env)) {
         /* Note that the syscall number is in W0, not X0 */
-        nr = env->xregs[0] & 0xffffffffU;
-        args = env->xregs[1];
+        nr = arm_get_xreg(env, 0) & 0xffffffffU;
+        args = arm_get_xreg(env, 1);
     } else {
         nr = env->regs[0];
         args = env->regs[1];

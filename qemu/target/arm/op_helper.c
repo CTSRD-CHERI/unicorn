@@ -294,7 +294,7 @@ void HELPER(wfi)(CPUARMState *env, uint32_t insn_len)
 
     if (target_el) {
         if (env->aarch64) {
-            env->pc -= insn_len;
+            increment_aarch_reg(&env->pc, -insn_len);
         } else {
             env->regs[15] -= insn_len;
         }
@@ -563,7 +563,7 @@ void HELPER(msr_banked)(CPUARMState *env, uint32_t value, uint32_t tgtmode,
                 env->banked_spsr[bank_number(tgtmode)] = value;
                 break;
             case 17: /* ELR_Hyp */
-                env->elr_el[2] = value;
+                set_aarch_reg_to_x(&env->elr_el[2], value);
                 break;
             case 13:
                 env->banked_r13[bank_number(tgtmode)] = value;
@@ -597,7 +597,7 @@ uint32_t HELPER(mrs_banked)(CPUARMState *env, uint32_t tgtmode, uint32_t regno)
             case 16: /* SPSRs */
                 return env->banked_spsr[bank_number(tgtmode)];
             case 17: /* ELR_Hyp */
-                return env->elr_el[2];
+                return get_aarch_reg_as_x(&env->elr_el[2]);
             case 13:
                 return env->banked_r13[bank_number(tgtmode)];
             case 14:
@@ -720,6 +720,43 @@ uint32_t HELPER(get_cp_reg)(CPUARMState *env, void *rip)
 
     return res;
 }
+
+#ifdef TARGET_CHERI
+
+void HELPER(set_cp_cap)(CPUARMState *env, void *rip, uint64_t value,
+                        uint32_t src_reg)
+{
+    const ARMCPRegInfo *ri = rip;
+    assert(cpreg_field_is_cap(ri));
+    const cap_register_t *cap = get_readonly_capreg(env, src_reg);
+    if (ri->type & ARM_CP_IO) {
+        // qemu_mutex_lock_iothread();
+        ri->writefn_cap(env, ri, value, cap);
+        // qemu_mutex_unlock_iothread();
+    } else {
+        ri->writefn_cap(env, ri, value, cap);
+    }
+}
+
+uint64_t HELPER(get_cp_cap)(CPUARMState *env, void *rip, uint32_t dest_reg)
+{
+    const ARMCPRegInfo *ri = rip;
+    assert(cpreg_field_is_cap(ri));
+    cap_register_t result;
+
+    if (ri->type & ARM_CP_IO) {
+        // qemu_mutex_lock_iothread();
+        ri->readfn_cap(env, ri, &result);
+        // qemu_mutex_unlock_iothread();
+    } else {
+        ri->readfn_cap(env, ri, &result);
+    }
+
+    update_capreg(env, dest_reg, &result);
+    return result._cr_cursor;
+}
+
+#endif
 
 void HELPER(set_cp_reg64)(CPUARMState *env, void *rip, uint64_t value)
 {
@@ -953,13 +990,13 @@ uint32_t HELPER(uc_hooksys64)(CPUARMState *env, uint32_t insn, void *hk)
 
     if (rt <= 28 && rt >= 0) {
         uc_rt = UC_ARM64_REG_X0 + rt;
-        cp_reg.val = env->xregs[rt];
+        cp_reg.val = arm_get_xreg(env, rt);
     } else if (rt == 29 ) {
         uc_rt = UC_ARM64_REG_X29;
-        cp_reg.val = env->xregs[29];
+        cp_reg.val = arm_get_xreg(env, 29);
     } else if (rt == 30) {
         uc_rt = UC_ARM64_REG_X30;
-        cp_reg.val = env->xregs[30];
+        cp_reg.val = arm_get_xreg(env, 30);
     } else {
         uc_rt = UC_ARM64_REG_XZR;
         cp_reg.val = 0;

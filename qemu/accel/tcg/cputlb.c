@@ -1911,6 +1911,27 @@ uint64_t cpu_ldq_data_ra(CPUArchState *env, target_ulong ptr, uintptr_t retaddr)
     return cpu_ldq_mmuidx_ra(env, ptr, cpu_mmu_index(env, false), retaddr);
 }
 
+#ifdef TARGET_CHERI
+target_ulong cpu_ld_cap_word_ra(CPUArchState *env, target_ulong ptr,
+                                uintptr_t retaddr)
+{
+    FullLoadHelper *full_load;
+    MemOp op;
+#if TARGET_LONG_BITS == 32
+    op = MO_TEUW;
+    full_load = MO_TE == MO_LE ? helper_le_lduw_mmu : helper_be_lduw_mmu;
+#elif TARGET_LONG_BITS == 64
+    op = MO_TEQ;
+    full_load = MO_TE == MO_LE ? helper_le_ldq_mmu : helper_be_ldq_mmu;
+#else
+#error "Unhandled target long width"
+#endif
+    return cpu_load_helper(
+        env, ptr, cpu_mmu_index(env, false), retaddr, MO_TEQ,
+        MO_TE == MO_LE ? helper_le_ldq_mmu : helper_be_ldq_mmu);
+}
+#endif
+
 uint32_t cpu_ldub_data(CPUArchState *env, target_ulong ptr)
 {
     return cpu_ldub_data_ra(env, ptr, 0);
@@ -2321,6 +2342,22 @@ void cpu_stq_data_ra(CPUArchState *env, target_ulong ptr,
 {
     cpu_stq_mmuidx_ra(env, ptr, val, cpu_mmu_index(env, false), retaddr);
 }
+
+#ifdef TARGET_CHERI
+void cpu_st_cap_word_ra(CPUArchState *env, target_ulong ptr,
+                        target_ulong val, uintptr_t retaddr)
+{
+    MemOp op;
+#if TARGET_LONG_BITS == 32
+    op = MO_TEUW;
+#elif TARGET_LONG_BITS == 64
+    op = MO_TEQ;
+#else
+#error "Unhandled target long width"
+#endif
+    cpu_store_helper(env, ptr, val, cpu_mmu_index(env, false), retaddr, op);
+}
+#endif
 
 void cpu_stb_data(CPUArchState *env, target_ulong ptr, uint32_t val)
 {

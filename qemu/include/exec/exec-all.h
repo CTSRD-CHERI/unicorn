@@ -59,6 +59,7 @@ void QEMU_NORETURN cpu_loop_exit_noexc(CPUState *cpu);
 void QEMU_NORETURN cpu_io_recompile(CPUState *cpu, uintptr_t retaddr);
 TranslationBlock *tb_gen_code(CPUState *cpu,
                               target_ulong pc, target_ulong cs_base,
+                              target_ulong cs_top, uint32_t cheri_flags,
                               uint32_t flags,
                               int cflags);
 
@@ -279,6 +280,14 @@ static inline void *probe_read(CPUArchState *env, target_ulong addr, int size,
     return probe_access(env, addr, size, MMU_DATA_LOAD, mmu_idx, retaddr);
 }
 
+#ifdef TARGET_CHERI
+static inline void *probe_cap_write(CPUArchState *env, target_ulong addr, int size,
+                      int mmu_idx, uintptr_t retaddr)
+{
+    return probe_access(env, addr, size, MMU_DATA_CAP_STORE, mmu_idx, retaddr);
+}
+#endif
+
 #define CODE_GEN_ALIGN           16 /* must be >= of the size of a icache line */
 
 /* Estimated block size for TB allocation.  */
@@ -302,6 +311,11 @@ struct tb_tc {
 struct TranslationBlock {
     target_ulong pc;   /* simulated PC corresponding to this block (EIP + CS base) */
     target_ulong cs_base; /* CS base for this block */
+    target_ulong cs_top;  /* End (exclusive) of code segment for this block */
+    uint32_t cheri_flags; /* Extra flags for CHERI. We need more bits than are
+                             available in flags (at least for MIPS) and this
+                             will allow us to avoid continuously changing the
+                             bits that we use when merging from upstream. */
     uint32_t flags; /* flags defining in which context the code was generated */
     uint16_t size;      /* size of target code for this block (1 <=
                            size <= TARGET_PAGE_SIZE) */
@@ -368,6 +382,20 @@ struct TranslationBlock {
 
 // extern bool parallel_cpus;
 
+// Reduce diff to upstream for CHERI (since we addd cs_top/ds_base/ds_top)
+#if !defined(cpu_get_tb_cpu_state_6)
+static inline void cpu_get_tb_cpu_state_6(CPUArchState *env, target_ulong *pc,
+                                          target_ulong *cs_base,
+                                          target_ulong *cs_top,
+                                          uint32_t *cheri_flags,
+                                          uint32_t *flags)
+{
+    (void)cs_top;
+    (void)cheri_flags;
+    cpu_get_tb_cpu_state(env, pc, cs_base, flags);
+}
+#endif
+
 /* Hide the atomic_read to make code a little easier on the eyes */
 static inline uint32_t tb_cflags(const TranslationBlock *tb)
 {
@@ -385,7 +413,8 @@ void tb_invalidate_phys_addr(AddressSpace *as, hwaddr addr, MemTxAttrs attrs);
 void tb_flush(CPUState *cpu);
 void tb_phys_invalidate(TCGContext *tcg_ctx, TranslationBlock *tb, tb_page_addr_t page_addr);
 TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
-                                   target_ulong cs_base, uint32_t flags,
+                                   target_ulong cs_base, target_ulong cs_top,
+                                   uint32_t cheri_flags, uint32_t flags,
                                    uint32_t cf_mask);
 void tb_set_jmp_target(TranslationBlock *tb, int n, uintptr_t addr);
 void tb_exec_lock(TCGContext*);

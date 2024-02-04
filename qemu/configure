@@ -857,8 +857,8 @@ QEMU_CFLAGS="$CPU_CFLAGS $QEMU_CFLAGS"
 
 default_target_list="aarch64-softmmu \
     arm-softmmu m68k-softmmu mips64el-softmmu mips64-softmmu mipsel-softmmu \
-    mips-softmmu ppc64-softmmu ppc-softmmu sparc64-softmmu sparc-softmmu \
-    x86_64-softmmu riscv32-softmmu riscv64-softmmu s390x-softmmu \
+    mips-softmmu morello-softmmu ppc64-softmmu ppc-softmmu sparc64-softmmu \
+    sparc-softmmu x86_64-softmmu riscv32-softmmu riscv64-softmmu s390x-softmmu \
     tricore-softmmu"
 
 if test x"$show_help" = x"yes" ; then
@@ -2645,6 +2645,13 @@ case "$target_name" in
   aarch64)
     TARGET_ARCH=aarch64
     TARGET_BASE_ARCH=arm
+    mttcg="yes"
+  ;;
+  morello)
+    TARGET_ARCH=aarch64
+    TARGET_BASE_ARCH=arm
+    echo "TARGET_CHERI=y" >> $config_target_mak
+    echo "TARGET_MORELLO=y" >> $config_target_mak
     mttcg="yes"
   ;;
   cris)

@@ -302,13 +302,18 @@ uc_err uc_open(uc_arch arch, uc_mode mode, uc_engine **result)
             }
             break;
 #endif
-#ifdef UNICORN_HAS_ARM64
+#if defined(UNICORN_HAS_ARM64) || defined(UNICORN_HAS_ARM64C)
         case UC_ARCH_ARM64:
             if (mode & ~UC_MODE_ARM_MASK) {
                 free(uc);
                 return UC_ERR_MODE;
             }
             uc->init_arch = arm64_uc_init;
+#ifdef UNICORN_HAS_ARM64C
+            if (mode & UC_MODE_C64) {
+                uc->init_arch = arm64c_uc_init;
+            }
+#endif
             break;
 #endif
 
@@ -1953,10 +1958,16 @@ static void find_context_reg_rw_function(uc_arch arch, uc_mode mode,
         rw->context_reg_write = arm_context_reg_write;
         break;
 #endif
-#ifdef UNICORN_HAS_ARM64
+#if defined(UNICORN_HAS_ARM64) || defined(UNICORN_HAS_ARM64C)
     case UC_ARCH_ARM64:
         rw->context_reg_read = arm64_context_reg_read;
         rw->context_reg_write = arm64_context_reg_write;
+#ifdef UNICORN_HAS_ARM64C
+        if (mode & UC_MODE_C64) {
+            rw->context_reg_read = arm64c_context_reg_read;
+            rw->context_reg_write = arm64c_context_reg_write;
+        }
+#endif
         break;
 #endif
 

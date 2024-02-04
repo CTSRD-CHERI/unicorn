@@ -618,6 +618,11 @@ static inline void tcg_gen_discard_i64(TCGContext *tcg_ctx, TCGv_i64 arg)
     tcg_gen_op1_i64(tcg_ctx, INDEX_op_discard, arg);
 }
 
+static inline void tcg_gen_sync_i64(TCGContext *tcg_ctx, TCGv_i64 arg)
+{
+    tcg_gen_op1_i64(tcg_ctx, INDEX_op_sync, arg);
+}
+
 static inline void tcg_gen_mov_i64(TCGContext *tcg_ctx, TCGv_i64 ret, TCGv_i64 arg)
 {
     if (ret != arg) {
@@ -786,6 +791,7 @@ static inline void tcg_gen_sub_i64(TCGContext *tcg_ctx, TCGv_i64 ret, TCGv_i64 a
 }
 
 void tcg_gen_discard_i64(TCGContext *tcg_ctx, TCGv_i64 arg);
+void tcg_gen_sync_i64(TCGContext *tcg_ctx, TCGv_i64 arg);
 void tcg_gen_mov_i64(TCGContext *tcg_ctx, TCGv_i64 ret, TCGv_i64 arg);
 void tcg_gen_movi_i64(TCGContext *tcg_ctx, TCGv_i64 ret, int64_t arg);
 void tcg_gen_ld8u_i64(TCGContext *tcg_ctx, TCGv_i64 ret, TCGv_ptr arg2, tcg_target_long offset);
@@ -928,119 +934,151 @@ void tcg_gen_lookup_and_goto_ptr(TCGContext *tcg_ctx);
 #define tcg_global_mem_new tcg_global_mem_new_i32
 #define tcg_temp_local_new tcg_temp_local_new_i32
 #define tcg_temp_free tcg_temp_free_i32
+#ifndef TARGET_CHERI
 #define tcg_gen_qemu_ld_tl tcg_gen_qemu_ld_i32
 #define tcg_gen_qemu_st_tl tcg_gen_qemu_st_i32
+#endif
+#define tcg_gen_qemu_ld_tl_with_checked_addr tcg_gen_qemu_ld_i32_with_checked_addr
+#define tcg_gen_qemu_st_tl_with_checked_addr tcg_gen_qemu_st_i32_with_checked_addr
 #else
 #define tcg_temp_new tcg_temp_new_i64
 #define tcg_global_reg_new tcg_global_reg_new_i64
 #define tcg_global_mem_new tcg_global_mem_new_i64
 #define tcg_temp_local_new tcg_temp_local_new_i64
 #define tcg_temp_free tcg_temp_free_i64
+#ifndef TARGET_CHERI
 #define tcg_gen_qemu_ld_tl tcg_gen_qemu_ld_i64
 #define tcg_gen_qemu_st_tl tcg_gen_qemu_st_i64
 #endif
+#define tcg_gen_qemu_ld_tl_with_checked_addr tcg_gen_qemu_ld_i64_with_checked_addr
+#define tcg_gen_qemu_st_tl_with_checked_addr tcg_gen_qemu_st_i64_with_checked_addr
+#endif
+#define tcg_temp_new_cap_checked (TCGv_cap_checked_ptr)tcg_temp_new
+#define tcg_temp_local_new_cap_checked() (TCGv_cap_checked_ptr)tcg_temp_local_new
+#define tcg_temp_free_cap_checked(tcg_ctx, val) tcg_temp_free(tcg_ctx, (TCGv)val)
 
+#ifdef TARGET_CHERI
+#pragma GCC poison tcg_gen_qemu_ld_tl
+#pragma GCC poison tcg_gen_qemu_st_tl
+#define TCG_LD_HELPER(name, memop)
+#define TCG_ST_HELPER(name, memop)
+#else
+#define tcg_gen_qemu_ld_i32 tcg_gen_qemu_ld_i32_with_checked_addr
+#define tcg_gen_qemu_st_i32 tcg_gen_qemu_st_i32_with_checked_addr
+#define tcg_gen_qemu_ld_i64 tcg_gen_qemu_ld_i64_with_checked_addr
+#define tcg_gen_qemu_st_i64 tcg_gen_qemu_st_i64_with_checked_addr
 void tcg_gen_qemu_ld_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGArg, MemOp);
 void tcg_gen_qemu_st_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGArg, MemOp);
 void tcg_gen_qemu_ld_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGArg, MemOp);
 void tcg_gen_qemu_st_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGArg, MemOp);
+#define TCG_LD_HELPER(name, memop)                                             \
+    static inline void tcg_gen_qemu_##name(TCGContext *tcg_ctx,                \
+                                           TCGv ret, TCGv addr,                \
+                                           int mem_index) {                    \
+        tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, memop);              \
+    }
+#define TCG_ST_HELPER(name, memop)                                             \
+    static inline void tcg_gen_qemu_##name(TCGContext *tcg_ctx,                \
+                                           TCGv ret, TCGv addr,                \
+                                           int mem_index) {                    \
+        tcg_gen_qemu_st_tl(tcg_ctx, ret, addr, mem_index, memop);              \
+    }
+#endif
 
-static inline void tcg_gen_qemu_ld8u(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_UB);
-}
+// These can be called if the address has already been checked (e.g. $ddc indirection of CHERI capability loads)
+// For non-CHERI targets these are the same as as the non-checked version.
+void tcg_gen_qemu_ld_i32_with_checked_addr(TCGContext *tcg_ctx, TCGv_i32 ret,
+                                           TCGv_cap_checked_ptr checked_addr,
+                                           TCGArg mem_index, MemOp op);
+void tcg_gen_qemu_st_i32_with_checked_addr(TCGContext *tcg_ctx, TCGv_i32 ret,
+                                           TCGv_cap_checked_ptr checked_addr,
+                                           TCGArg mem_index, MemOp op);
+void tcg_gen_qemu_ld_i64_with_checked_addr(TCGContext *tcg_ctx, TCGv_i64 ret,
+                                           TCGv_cap_checked_ptr checked_addr,
+                                           TCGArg mem_index, MemOp op);
+void tcg_gen_qemu_st_i64_with_checked_addr(TCGContext *tcg_ctx, TCGv_i64 ret,
+                                           TCGv_cap_checked_ptr checked_addr,
+                                           TCGArg mem_index, MemOp op);
+// The same as tcg_gen_qemu_st_i64_with_checked_addr but takes a boolean option
+// as to whether a tag clear should take place.
+void tcg_gen_qemu_st_i64_with_checked_addr_cond_invalidate(
+    TCGContext *tcg_ctx, TCGv_i64 val, TCGv_cap_checked_ptr addr, TCGArg idx, MemOp memop,
+    bool invalidate);
+// To be used in conjunction with
+// tcg_gen_qemu_st_i64_with_checked_addr_cond_invalidate to manually clear a
+// tag
+void handle_conditional_invalidate(TCGContext *tcg_ctx, TCGv_cap_checked_ptr checked_addr,
+                                   MemOp memop, TCGArg mmu_idx,
+                                   TCGv_i32 store_happens);
 
-static inline void tcg_gen_qemu_ld8s(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_SB);
-}
+TCG_LD_HELPER(ld8u, MO_UB)
+TCG_LD_HELPER(ld8s, MO_SB)
+TCG_LD_HELPER(ld16u, MO_TEUW)
+TCG_LD_HELPER(ld16s, MO_TESW)
+TCG_LD_HELPER(ld32u, MO_TEUL)
+TCG_LD_HELPER(ld32s, MO_TESL)
+TCG_LD_HELPER(ld64, MO_TEQ)
 
-static inline void tcg_gen_qemu_ld16u(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_TEUW);
-}
+TCG_ST_HELPER(st8, MO_UB)
+TCG_ST_HELPER(st16, MO_TEUW)
+TCG_ST_HELPER(st32, MO_TEUL)
+TCG_ST_HELPER(st64, MO_TEQ)
 
-static inline void tcg_gen_qemu_ld16s(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_TESW);
-}
+#ifdef TARGET_CHERI
+#pragma GCC poison tcg_gen_atomic_cmpxchg_i32
+#pragma GCC poison tcg_gen_atomic_cmpxchg_i64
+#pragma GCC poison tcg_gen_atomic_cmpxchg_tl
+#else
+#define tcg_gen_atomic_cmpxchg_i32 tcg_gen_atomic_cmpxchg_i32_with_checked_addr
+#define tcg_gen_atomic_cmpxchg_i64 tcg_gen_atomic_cmpxchg_i64_with_checked_addr
+#endif
+void tcg_gen_atomic_cmpxchg_i32_with_checked_addr(TCGContext *tcg_ctx,
+                                                  TCGv_i32,
+                                                  TCGv_cap_checked_ptr,
+                                                  TCGv_i32, TCGv_i32, TCGArg,
+                                                  MemOp);
+void tcg_gen_atomic_cmpxchg_i64_with_checked_addr(TCGContext *tcg_ctx,
+                                                  TCGv_i64,
+                                                  TCGv_cap_checked_ptr,
+                                                  TCGv_i64, TCGv_i64, TCGArg,
+                                                  MemOp);
 
-static inline void tcg_gen_qemu_ld32u(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_TEUL);
-}
+void tcg_gen_atomic_xchg_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_xchg_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
 
-static inline void tcg_gen_qemu_ld32s(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_TESL);
-}
+void tcg_gen_atomic_fetch_add_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_add_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_and_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_and_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_or_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_or_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_xor_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_xor_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_smin_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_smin_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_umin_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_umin_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_smax_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_smax_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_umax_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_fetch_umax_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
 
-static inline void tcg_gen_qemu_ld64(TCGContext *tcg_ctx, TCGv_i64 ret, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_ld_i64(tcg_ctx, ret, addr, mem_index, MO_TEQ);
-}
-
-static inline void tcg_gen_qemu_st8(TCGContext *tcg_ctx, TCGv arg, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_st_tl(tcg_ctx, arg, addr, mem_index, MO_UB);
-}
-
-static inline void tcg_gen_qemu_st16(TCGContext *tcg_ctx, TCGv arg, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_st_tl(tcg_ctx, arg, addr, mem_index, MO_TEUW);
-}
-
-static inline void tcg_gen_qemu_st32(TCGContext *tcg_ctx, TCGv arg, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_st_tl(tcg_ctx, arg, addr, mem_index, MO_TEUL);
-}
-
-static inline void tcg_gen_qemu_st64(TCGContext *tcg_ctx, TCGv_i64 arg, TCGv addr, int mem_index)
-{
-    tcg_gen_qemu_st_i64(tcg_ctx, arg, addr, mem_index, MO_TEQ);
-}
-
-void tcg_gen_atomic_cmpxchg_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGv_i32,
-                                TCGArg, MemOp);
-void tcg_gen_atomic_cmpxchg_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGv_i64,
-                                TCGArg, MemOp);
-
-void tcg_gen_atomic_xchg_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_xchg_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-
-void tcg_gen_atomic_fetch_add_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_add_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_and_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_and_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_or_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_or_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_xor_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_xor_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_smin_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_smin_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_umin_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_umin_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_smax_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_smax_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_umax_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_fetch_umax_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-
-void tcg_gen_atomic_add_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_add_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_and_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_and_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_or_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_or_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_xor_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_xor_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_smin_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_smin_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_umin_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_umin_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_smax_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_smax_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
-void tcg_gen_atomic_umax_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGv_i32, TCGArg, MemOp);
-void tcg_gen_atomic_umax_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_add_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_add_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_and_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_and_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_or_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_or_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_xor_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_xor_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_smin_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_smin_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_umin_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_umin_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_smax_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_smax_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
+void tcg_gen_atomic_umax_fetch_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv_cap_checked_ptr, TCGv_i32, TCGArg, MemOp);
+void tcg_gen_atomic_umax_fetch_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv_cap_checked_ptr, TCGv_i64, TCGArg, MemOp);
 
 void tcg_gen_mov_vec(TCGContext *tcg_ctx, TCGv_vec, TCGv_vec);
 void tcg_gen_dup_i32_vec(TCGContext *tcg_ctx, unsigned vece, TCGv_vec, TCGv_i32);
@@ -1143,6 +1181,7 @@ void tcg_gen_stl_vec(TCGContext *tcg_ctx, TCGv_vec r, TCGv_ptr base, TCGArg offs
 #define tcg_gen_divu_tl tcg_gen_divu_i64
 #define tcg_gen_remu_tl tcg_gen_remu_i64
 #define tcg_gen_discard_tl tcg_gen_discard_i64
+#define tcg_gen_sync_tl tcg_gen_sync_i64
 #define tcg_gen_trunc_tl_i32 tcg_gen_extrl_i64_i32
 #define tcg_gen_trunc_i64_tl tcg_gen_mov_i64
 #define tcg_gen_extu_i32_tl tcg_gen_extu_i32_i64
@@ -1158,6 +1197,7 @@ void tcg_gen_stl_vec(TCGContext *tcg_ctx, TCGv_vec r, TCGv_ptr base, TCGArg offs
 #define tcg_gen_bswap16_tl tcg_gen_bswap16_i64
 #define tcg_gen_bswap32_tl tcg_gen_bswap32_i64
 #define tcg_gen_bswap64_tl tcg_gen_bswap64_i64
+#define tcg_gen_bswap_tl tcg_gen_bswap64_i64
 #define tcg_gen_concat_tl_i64 tcg_gen_concat32_i64
 #define tcg_gen_extr_i64_tl tcg_gen_extr32_i64
 #define tcg_gen_andc_tl tcg_gen_andc_i64
@@ -1192,7 +1232,10 @@ void tcg_gen_stl_vec(TCGContext *tcg_ctx, TCGv_vec r, TCGv_ptr base, TCGArg offs
 #define tcg_gen_umin_tl tcg_gen_umin_i64
 #define tcg_gen_smax_tl tcg_gen_smax_i64
 #define tcg_gen_umax_tl tcg_gen_umax_i64
+#ifndef TARGET_CHERI
 #define tcg_gen_atomic_cmpxchg_tl tcg_gen_atomic_cmpxchg_i64
+#endif
+#define tcg_gen_atomic_cmpxchg_tl_with_checked_addr tcg_gen_atomic_cmpxchg_i64_with_checked_addr
 #define tcg_gen_atomic_xchg_tl tcg_gen_atomic_xchg_i64
 #define tcg_gen_atomic_fetch_add_tl tcg_gen_atomic_fetch_add_i64
 #define tcg_gen_atomic_fetch_and_tl tcg_gen_atomic_fetch_and_i64
@@ -1256,6 +1299,7 @@ void tcg_gen_stl_vec(TCGContext *tcg_ctx, TCGv_vec r, TCGv_ptr base, TCGArg offs
 #define tcg_gen_divu_tl tcg_gen_divu_i32
 #define tcg_gen_remu_tl tcg_gen_remu_i32
 #define tcg_gen_discard_tl tcg_gen_discard_i32
+#define tcg_gen_sync_tl tcg_gen_sync_i32
 #define tcg_gen_trunc_tl_i32 tcg_gen_mov_i32
 #define tcg_gen_trunc_i64_tl tcg_gen_extrl_i64_i32
 #define tcg_gen_extu_i32_tl tcg_gen_mov_i32
@@ -1270,6 +1314,7 @@ void tcg_gen_stl_vec(TCGContext *tcg_ctx, TCGv_vec r, TCGv_ptr base, TCGArg offs
 #define tcg_gen_ext32s_tl tcg_gen_mov_i32
 #define tcg_gen_bswap16_tl tcg_gen_bswap16_i32
 #define tcg_gen_bswap32_tl tcg_gen_bswap32_i32
+#define tcg_gen_bswap_tl tcg_gen_bswap32_i32
 #define tcg_gen_concat_tl_i64 tcg_gen_concat_i32_i64
 #define tcg_gen_extr_i64_tl tcg_gen_extr_i64_i32
 #define tcg_gen_andc_tl tcg_gen_andc_i32
@@ -1304,7 +1349,10 @@ void tcg_gen_stl_vec(TCGContext *tcg_ctx, TCGv_vec r, TCGv_ptr base, TCGArg offs
 #define tcg_gen_umin_tl tcg_gen_umin_i32
 #define tcg_gen_smax_tl tcg_gen_smax_i32
 #define tcg_gen_umax_tl tcg_gen_umax_i32
+#ifndef TARGET_CHERI
 #define tcg_gen_atomic_cmpxchg_tl tcg_gen_atomic_cmpxchg_i32
+#endif
+#define tcg_gen_atomic_cmpxchg_tl_with_checked_addr tcg_gen_atomic_cmpxchg_i32_with_checked_addr
 #define tcg_gen_atomic_xchg_tl tcg_gen_atomic_xchg_i32
 #define tcg_gen_atomic_fetch_add_tl tcg_gen_atomic_fetch_add_i32
 #define tcg_gen_atomic_fetch_and_tl tcg_gen_atomic_fetch_and_i32

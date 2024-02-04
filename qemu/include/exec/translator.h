@@ -69,11 +69,33 @@ typedef struct DisasContextBase {
     TranslationBlock *tb;
     target_ulong pc_first;
     target_ulong pc_next;
+#ifdef TARGET_CHERI
+    target_ulong pcc_base;
+    target_ulong pcc_top;
+    uint32_t cheri_flags;
+    // Keeps track of all compression states a cap could be at TRANSLATATION
+    // TIME. Within a basic block, this is possible to track for any runtime
+    // use.
+    uint8_t cap_compression_states[NUM_LAZY_CAP_REGS];
+#endif
     DisasJumpType is_jmp;
     int num_insns;
     int max_insns;
     bool singlestep_enabled;
 } DisasContextBase;
+
+#ifdef TARGET_CHERI
+/**
+ * @return the value by which PC should be relocated (or zero if PCC relocation
+ * is off). For Morello this is toggleable at runtime, but other architectures
+ * either use no relocation or PCC.base unconditionally.
+ * @related CHERI_TRANSLATE_PCC_RELOCATION(ctx)
+ */
+#define pcc_reloc(ctx)                                                         \
+    (CHERI_TRANSLATE_PCC_RELOCATION(ctx) ? (ctx)->base.pcc_base : 0)
+#else
+#define pcc_reloc(ctx) 0
+#endif
 
 /**
  * TranslatorOps:

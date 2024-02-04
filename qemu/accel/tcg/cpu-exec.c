@@ -121,6 +121,7 @@ static void cpu_exec_nocache(CPUState *cpu, int max_cycles,
 
     mmap_lock();
     tb = tb_gen_code(cpu, orig_tb->pc, orig_tb->cs_base,
+                     orig_tb->cs_top, orig_tb->cheri_flags,
                      orig_tb->flags, cflags);
     tb->orig_tb = orig_tb;
     mmap_unlock();
@@ -137,8 +138,10 @@ static void cpu_exec_nocache(CPUState *cpu, int max_cycles,
 struct tb_desc {
     target_ulong pc;
     target_ulong cs_base;
+    target_ulong cs_top;
     CPUArchState *env;
     tb_page_addr_t phys_page1;
+    uint32_t cheri_flags;
     uint32_t flags;
     uint32_t cf_mask;
     uint32_t trace_vcpu_dstate;
@@ -152,6 +155,8 @@ static bool tb_lookup_cmp(struct uc_struct *uc, const void *p, const void *d)
     if (tb->pc == desc->pc &&
         tb->page_addr[0] == desc->phys_page1 &&
         tb->cs_base == desc->cs_base &&
+        tb->cs_top == desc->cs_top &&
+        tb->cheri_flags == desc->cheri_flags &&
         tb->flags == desc->flags &&
         tb->trace_vcpu_dstate == desc->trace_vcpu_dstate &&
         (tb_cflags(tb) & (CF_HASH_MASK | CF_INVALID)) == desc->cf_mask) {
@@ -173,7 +178,8 @@ static bool tb_lookup_cmp(struct uc_struct *uc, const void *p, const void *d)
 }
 
 TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
-                                   target_ulong cs_base, uint32_t flags,
+                                   target_ulong cs_base, target_ulong cs_top,
+                                   uint32_t cheri_flags, uint32_t flags,
                                    uint32_t cf_mask)
 {
     struct uc_struct *uc = cpu->uc;
@@ -183,6 +189,8 @@ TranslationBlock *tb_htable_lookup(CPUState *cpu, target_ulong pc,
 
     desc.env = (CPUArchState *)cpu->env_ptr;
     desc.cs_base = cs_base;
+    desc.cs_top = cs_top;
+    desc.cheri_flags = cheri_flags;
     desc.flags = flags;
     desc.cf_mask = cf_mask;
     desc.trace_vcpu_dstate = *cpu->trace_dstate;
@@ -246,17 +254,18 @@ static inline TranslationBlock *tb_find(CPUState *cpu,
                                         int tb_exit, uint32_t cf_mask)
 {
     TranslationBlock *tb;
-    target_ulong cs_base, pc;
+    target_ulong cs_base, cs_top = 0, pc;
+    uint32_t cheri_flags = 0;
     uint32_t flags;
     uc_tb cur_tb, prev_tb;
     uc_engine *uc = cpu->uc;
     struct list_item *cur;
     struct hook *hook;
 
-    tb = tb_lookup__cpu_state(cpu, &pc, &cs_base, &flags, cf_mask);
+    tb = tb_lookup__cpu_state(cpu, &pc, &cs_base, &cs_top, &cheri_flags, &flags, cf_mask);
     if (tb == NULL) {
         mmap_lock();
-        tb = tb_gen_code(cpu, pc, cs_base, flags, cf_mask);
+        tb = tb_gen_code(cpu, pc, cs_base, cs_top, cheri_flags, flags, cf_mask); // XXXR3: changed
         mmap_unlock();
         /* We add the TB in the virtual pc hash table for the fast lookup */
         cpu->tb_jmp_cache[tb_jmp_cache_hash_func(cpu->uc, pc)] = tb;
@@ -334,7 +343,7 @@ static inline bool cpu_handle_exception(CPUState *cpu, int *ret)
     struct uc_struct *uc = cpu->uc;
     struct hook *hook;
 
-    // printf(">> exception index = %u\n", cpu->exception_index); qq
+    // printf(">> exception index = %u\n", cpu->exception_index); // qq
 
     if (cpu->uc->stop_interrupt && cpu->uc->stop_interrupt(cpu->uc, cpu->exception_index)) {
         // Unicorn: call registered invalid instruction callbacks

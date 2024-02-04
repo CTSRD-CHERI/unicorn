@@ -970,6 +970,8 @@ static bool tb_cmp(struct uc_struct *uc, const void *ap, const void *bp)
 
     return a->pc == b->pc &&
         a->cs_base == b->cs_base &&
+        a->cs_top == b->cs_top &&
+        a->cheri_flags == b->cheri_flags &&
         a->flags == b->flags &&
         (tb_cflags(a) & CF_HASH_MASK) == (tb_cflags(b) & CF_HASH_MASK) &&
         a->trace_vcpu_dstate == b->trace_vcpu_dstate &&
@@ -1023,9 +1025,10 @@ static void uc_invalidate_tb(struct uc_struct *uc, uint64_t start_addr, size_t l
 static uc_err uc_gen_tb(struct uc_struct *uc, uint64_t addr, uc_tb *out_tb) 
 {
     TranslationBlock *tb;
-    target_ulong cs_base, pc;
+    target_ulong cs_base, pc, cs_top = 0;
     CPUState *cpu = uc->cpu;
     CPUArchState *env = (CPUArchState *)cpu->env_ptr;
+    uint32_t cheri_flags = 0;
     uint32_t flags;
     uint32_t hash;
     uint32_t cflags = cpu->cflags_next_tb;
@@ -1034,7 +1037,7 @@ static uc_err uc_gen_tb(struct uc_struct *uc, uint64_t addr, uc_tb *out_tb)
         cflags = curr_cflags();
     }
 
-    cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+    cpu_get_tb_cpu_state_6(env, &pc, &cs_base, &cs_top, &cheri_flags, &flags);
 
     // Unicorn: Our hack here.
     pc = addr;
@@ -1048,16 +1051,18 @@ static uc_err uc_gen_tb(struct uc_struct *uc, uint64_t addr, uc_tb *out_tb)
     if (unlikely(!(tb &&
                    tb->pc == pc &&
                    tb->cs_base == cs_base &&
+                   tb->cs_top == cs_top &&
+                   tb->cheri_flags == cheri_flags &&
                    tb->flags == flags &&
                    tb->trace_vcpu_dstate == *cpu->trace_dstate &&
                    (tb_cflags(tb) & (CF_HASH_MASK | CF_INVALID)) == cflags))) {
 
-        tb = tb_htable_lookup(cpu, pc, cs_base, flags, cflags);
+        tb = tb_htable_lookup(cpu, pc, cs_base, cs_top, cheri_flags, flags, cflags);
         cpu->tb_jmp_cache[hash] = tb;
 
         if (tb == NULL) {
             mmap_lock();
-            tb = tb_gen_code(cpu, pc, cs_base, flags, cflags);
+            tb = tb_gen_code(cpu, pc, cs_base, cs_top, cheri_flags, flags, cflags);
             mmap_unlock();
             /* We add the TB in the virtual pc hash table for the fast lookup */
             cpu->tb_jmp_cache[hash] = tb;
@@ -1564,6 +1569,7 @@ tb_link_page(struct uc_struct *uc, TranslationBlock *tb, tb_page_addr_t phys_pc,
 /* Called with mmap_lock held for user mode emulation.  */
 TranslationBlock *tb_gen_code(CPUState *cpu,
                               target_ulong pc, target_ulong cs_base,
+                              target_ulong cs_top, uint32_t cheri_flags,
                               uint32_t flags, int cflags)
 {
 #ifdef TARGET_ARM
@@ -1617,6 +1623,8 @@ TranslationBlock *tb_gen_code(CPUState *cpu,
     tb->tc.ptr = gen_code_buf;
     tb->pc = pc;
     tb->cs_base = cs_base;
+    tb->cs_top = cs_top;
+    tb->cheri_flags = cheri_flags;
     tb->flags = flags;
     tb->cflags = cflags;
     tb->orig_tb = NULL;
@@ -1747,7 +1755,8 @@ tb_invalidate_phys_page_range__locked(struct uc_struct *uc, struct page_collecti
     bool current_tb_modified = false;
     TranslationBlock *current_tb = NULL;
     target_ulong current_pc = 0;
-    target_ulong current_cs_base = 0;
+    target_ulong current_cs_base = 0, current_cs_top = 0;
+    uint32_t current_cheri_flags = 0;
     uint32_t current_flags = 0;
 #endif /* TARGET_HAS_PRECISE_SMC */
 
@@ -1793,7 +1802,8 @@ tb_invalidate_phys_page_range__locked(struct uc_struct *uc, struct page_collecti
                  */
                 current_tb_modified = true;
                 cpu_restore_state_from_tb(cpu, current_tb, retaddr, true);
-                cpu_get_tb_cpu_state(env, &current_pc, &current_cs_base,
+                cpu_get_tb_cpu_state_6(env, &current_pc, &current_cs_base,
+                                     &current_cs_top, &current_cheri_flags,
                                      &current_flags);
             }
 #endif /* TARGET_HAS_PRECISE_SMC */
@@ -1932,11 +1942,12 @@ void tb_check_watchpoint(CPUState *cpu, uintptr_t retaddr)
         /* The exception probably happened in a helper.  The CPU state should
            have been saved before calling it. Fetch the PC from there.  */
         CPUArchState *env = cpu->env_ptr;
-        target_ulong pc, cs_base;
-        tb_page_addr_t addr;
+        target_ulong cs_base, cs_top = 0, pc;
+        uint32_t cheri_flags = 0;
         uint32_t flags;
+        tb_page_addr_t addr;
 
-        cpu_get_tb_cpu_state(env, &pc, &cs_base, &flags);
+        cpu_get_tb_cpu_state_6(env, &pc, &cs_base, &cs_top, &cheri_flags, &flags);
         addr = get_page_addr_code(env, pc);
         if (addr != -1) {
             tb_invalidate_phys_range(cpu->uc, addr, addr + 1);

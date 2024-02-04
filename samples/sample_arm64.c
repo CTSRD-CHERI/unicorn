@@ -19,7 +19,10 @@
 
 // str        w11, [c13], #0
 // ldrb       w15, [c13], #0
-#define ARM64C_CODE "\xab\x05\x00\xb8\xaf\x05\x40\x38"
+// #define ARM64C_CODE "\xab\x05\x00\xb8\xaf\x05\x40\x38"
+
+// XXXR3: lemme test this instruction (no memory-related operations)
+#define ARM64C_CODE "\x00\x04\x00\x11"  // add w0, w0, 0x1
 
 // memory address where emulation starts
 #define ADDRESS 0x10000
@@ -205,16 +208,24 @@ static void test_arm64c(void)
 {
     uc_engine *uc;
     uc_err err;
-    uc_hook trace1, trace2;
+    // uc_hook trace1, trace2;
 
-    int128_t c11 = 0x12345678;    // C11 register
-    int128_t c13 = 0x10000 + 0x8; // C13 register, XXXR3: this must be a valid capability
-    int128_t c15 = 0x33;          // C15 register
+    int64_t x0 = 0x1;
+    // int64_t c11 = 0x12345678;    // C11 register
+    // uc_cheri_cap c13;            // C13 register, XXXR3: this must be a valid capability
+    // c13.address = ADDRESS + 0x10;
+    // c13.base = ADDRESS;
+    // c13.top = ADDRESS + 0x100;
+    // c13.tag = 1;
+    // c13.uperms = 0; // ignored for now, default FULL
+    // c13.perms = 0; // ignored for now, default FULL
+    // c13.type = 0; // ignored for now, default unsealed
+    // int64_t c15 = 0x33;          // C15 register
 
-    printf("Emulate ARM64 C64 code\n");
+    printf("Emulate ARM64 C64 code\n");  // add w0, w0, 0x1
 
     // Initialize emulator in ARM C64 mode
-    err = uc_open(UC_ARCH_ARM64, UC_MODE_C64, &uc);
+    err = uc_open(UC_ARCH_ARM64, UC_MODE_C64 | UC_MODE_ARM, &uc);
     if (err) {
         printf("Failed on uc_open() with error returned: %u (%s)\n", err,
                uc_strerror(err));
@@ -228,15 +239,25 @@ static void test_arm64c(void)
     uc_mem_write(uc, ADDRESS, ARM64C_CODE, sizeof(ARM64C_CODE) - 1);
 
     // initialize machine registers
-    uc_reg_write(uc, UC_ARM64_REG_C11, &c11);
-    uc_reg_write(uc, UC_ARM64_REG_C13, &c13);
-    uc_reg_write(uc, UC_ARM64_REG_C15, &c15);
+    uc_reg_write(uc, UC_ARM64_REG_X0, &x0);
+    // uc_reg_write(uc, UC_ARM64_REG_X11, &c11);
+    // uc_reg_write(uc, UC_ARM64_REG_C13, &c13);
+    // uc_reg_write(uc, UC_ARM64_REG_X15, &c15);
+
+    // inspect PCC before emulation start
+    uc_cheri_cap pcc;
+    uc_reg_read(uc, UC_ARM64_REG_PC, &pcc);
+    printf(">>> PCC cursor = 0x%x \n", pcc.address);
+    printf(">>> PCC tag = 0x%x \n", pcc.tag);
+    printf(">>> PCC permissions = 0x%x \n", pcc.perms);
+    printf(">>> PCC base = 0x%x \n", pcc.base);
+    printf(">>> PCC top = 0x%x \n", pcc.top);
 
     // tracing all basic blocks with customized callback
-    uc_hook_add(uc, &trace1, UC_HOOK_BLOCK, hook_block, NULL, 1, 0);
+    // uc_hook_add(uc, &trace1, UC_HOOK_BLOCK, hook_block, NULL, 1, 0);
 
     // tracing one instruction at ADDRESS with customized callback
-    uc_hook_add(uc, &trace2, UC_HOOK_CODE, hook_code, NULL, ADDRESS, ADDRESS);
+    // uc_hook_add(uc, &trace2, UC_HOOK_CODE, hook_code, NULL, ADDRESS, ADDRESS);
 
     // emulate machine code in infinite time (last param = 0), or when
     // finishing all the code.
@@ -247,10 +268,16 @@ static void test_arm64c(void)
 
     // now print out some registers
     printf(">>> Emulation done. Below is the CPU context\n");
-    printf(">>> As little endian, C15 should be 0x78:\n");
 
-    uc_reg_read(uc, UC_ARM64_REG_C15, &c15);
-    printf(">>> C15 = 0x%" PRIx64 "\n", c15);
+    uc_reg_read(uc, UC_ARM64_REG_X0, &x0);
+    printf(">>> X0 = 0x%" PRIx64 "\n", x0);
+
+    uc_reg_read(uc, UC_ARM64_REG_PC, &pcc);
+    printf(">>> PCC cursor = 0x%x \n", pcc.address);
+    printf(">>> PCC tag = 0x%x \n", pcc.tag);
+    printf(">>> PCC permissions = 0x%x \n", pcc.perms);
+    printf(">>> PCC base = 0x%x \n", pcc.base);
+    printf(">>> PCC top = 0x%x \n", pcc.top);
 
     uc_close(uc);
 }

@@ -26,13 +26,29 @@
 
 #include <uc_priv.h>
 
+#ifdef TARGET_CHERI
+
+const char *const cheri_gp_regnames[34] = {
+    "c0",  "c1",  "c2",  "c3",  "c4",  "c5",  "c6",         "c7",  "c8",
+    "c9",  "c10", "c11", "c12", "c13", "c14", "c15",        "c16", "c17",
+    "c18", "c19", "c20", "c21", "c22", "c23", "c24",        "c25", "c26",
+    "c27", "c28", "c29", "c30", "csp", "czr", "ctmp(error)"};
+
+const char *const cheri_gp_int_regnames[34] = {
+    "x0",  "x1",  "x2",  "x3",  "x4",  "x5",  "x6",         "x7",  "x8",
+    "x9",  "x10", "x11", "x12", "x13", "x14", "x15",        "x16", "x17",
+    "x18", "x19", "x20", "x21", "x22", "x23", "x24",        "x25", "x26",
+    "x27", "x28", "x29", "x30", "xsp", "xzr", "xtmp(error)"};
+
+#endif
+
 static void arm_cpu_set_pc(CPUState *cs, vaddr value)
 {
     ARMCPU *cpu = ARM_CPU(cs);
     CPUARMState *env = &cpu->env;
 
     if (is_a64(env)) {
-        env->pc = value;
+        set_aarch_reg_value(&env->pc, value);
         env->thumb = 0;
     } else {
         env->regs[15] = value & ~1;
@@ -50,7 +66,8 @@ static void arm_cpu_synchronize_from_tb(CPUState *cs, TranslationBlock *tb)
      * never possible for an AArch64 TB to chain to an AArch32 TB.
      */
     if (is_a64(env)) {
-        env->pc = tb->pc;
+        // LETODO: I dont know if this needs bounds checking
+        set_aarch_reg_value(&env->pc, tb->pc);
     } else {
         env->regs[15] = tb->pc;
     }
@@ -104,6 +121,27 @@ static void cp_reg_reset(gpointer key, gpointer value, gpointer opaque)
         return;
     }
 
+#ifdef TARGET_CHERI
+    if (cpreg_field_is_cap(ri)) {
+        if (ri->type & ARM_CP_CONST) {
+            return;
+        }
+        assert(ri->fieldoffset && "Unexpected capability cpreg without offset");
+        /*
+         * We ensure that all cap_register_t values are reset to a canonical
+         * capability rather than all zeroes. This ensures that values such
+         * as pesbt and capreg_state are initialized correctly. The default
+         * reset value is null unless has_special_capresetvalue is set.
+         */
+        if (ri->has_special_capresetvalue) {
+            CPREG_FIELDCAP(&cpu->env, ri) = ri->capresetvalue;
+        } else {
+            null_capability(&CPREG_FIELDCAP(&cpu->env, ri));
+        }
+        return;
+    }
+#endif
+
     /* A zero offset is never possible as it would be regs[0]
      * so we use it to indicate that reset is being handled elsewhere.
      * This is basically only used for fields in non-core coprocessors
@@ -120,7 +158,7 @@ static void cp_reg_reset(gpointer key, gpointer value, gpointer opaque)
     }
 }
 
-static void cp_reg_check_reset(gpointer key, gpointer value,  gpointer opaque)
+static void cp_reg_check_reset(gpointer key, gpointer value, gpointer opaque)
 {
     /* Purely an assertion check: we've already done reset once,
      * so now check that running the reset for the cpreg doesn't
@@ -131,20 +169,47 @@ static void cp_reg_check_reset(gpointer key, gpointer value,  gpointer opaque)
 #ifndef NDEBUG
     ARMCPU *cpu = opaque;
     uint64_t oldvalue, newvalue;
-#endif
+
+#ifdef TARGET_CHERI
+    /*
+     * Check that all capaility register were initialized to a valid capability
+     * rather than just memset() to zero.
+     */
+    if (cpreg_field_is_cap(ri)) {
+        cap_register_t creg_value = read_raw_cp_reg_cap(&cpu->env, ri);
+        _Static_assert(CREG_FULLY_DECOMPRESSED != 0, "need nonzero value");
+        if (creg_value.cr_extra != CREG_FULLY_DECOMPRESSED) {
+            abort();
+        }
+    }
+#endif // TARGET_CHERI
+#endif // NDEBUG
 
     if (ri->type & (ARM_CP_SPECIAL | ARM_CP_ALIAS | ARM_CP_NO_RAW)) {
         return;
     }
+#ifdef TARGET_CHERI
+    if (cpreg_field_is_cap(ri)) {
+#ifndef NDEBUG
+        cap_register_t creg_old = read_raw_cp_reg_cap(&cpu->env, ri);
+#endif // NDEBUG
+        cp_reg_reset(key, value, opaque);
+#ifndef NDEBUG
+        cap_register_t creg_new = read_raw_cp_reg_cap(&cpu->env, ri);
+        assert(CAP_cc(raw_equal)(&creg_old, &creg_new));
+#endif // NDEBUG
+        return;
+    }
+#endif // TARGET_CHERI
 
 #ifndef NDEBUG
     oldvalue = read_raw_cp_reg(&cpu->env, ri);
-#endif
+#endif // NDEBUG
     cp_reg_reset(key, value, opaque);
 #ifndef NDEBUG
     newvalue = read_raw_cp_reg(&cpu->env, ri);
     assert(oldvalue == newvalue);
-#endif
+#endif // NDEBUG
 }
 
 static void arm_cpu_reset(CPUState *dev)
@@ -157,6 +222,31 @@ static void arm_cpu_reset(CPUState *dev)
     acc->parent_reset(dev);
 
     memset(env, 0, offsetof(CPUARMState, end_reset_fields));
+#ifdef TARGET_CHERI
+    /*
+     * Reset the capability registers that are marked as ARM_CP_ALIAS to
+     * a canonical null capability.
+     */
+    for (size_t i = 0; i < ARRAY_SIZE(env->sp_el); i++) {
+        null_capability(&env->sp_el[i].cap);
+    }
+    for (size_t i = 0; i < ARRAY_SIZE(env->elr_el); i++) {
+        null_capability(&env->elr_el[i].cap);
+    }
+    /*
+     * The following are marked as arm_cp_reset_ignore. However, they are before
+     * end_reset_fields, so we should ensure that the value is canonical NULL
+     * instead of all zeroes.
+     */
+    null_capability(&env->cp15.tpidrurw_s.cap);
+    null_capability(&env->cp15.tpidrurw_ns.cap);
+    null_capability(&env->cp15.tpidruro_s.cap);
+    null_capability(&env->cp15.tpidruro_ns.cap);
+    null_capability(&env->cp15.tpidrprw_s.cap);
+    null_capability(&env->cp15.tpidrprw_ns.cap);
+    null_capability(&env->cp15.vbar_s.cap);
+    null_capability(&env->cp15.vbar_ns.cap);
+#endif
 
     g_hash_table_foreach(cpu->cp_regs, cp_reg_reset, cpu);
     g_hash_table_foreach(cpu->cp_regs, cp_reg_check_reset, cpu);
@@ -167,7 +257,6 @@ static void arm_cpu_reset(CPUState *dev)
     env->vfp.xregs[ARM_VFP_MVFR2] = cpu->isar.mvfr2;
 
     cpu->power_state = cpu->start_powered_off ? PSCI_OFF : PSCI_ON;
-    s->halted = cpu->start_powered_off;
 
     if (arm_feature(env, ARM_FEATURE_IWMMXT)) {
         env->iwmmxt.cregs[ARM_IWMMXT_wCID] = 0x69051000 | 'Q';
@@ -184,7 +273,23 @@ static void arm_cpu_reset(CPUState *dev)
         } else {
             env->pstate = PSTATE_MODE_EL1h;
         }
+
+#ifdef TARGET_CHERI
+        reset_capregs(env);
+        set_max_perms_capability(&env->pc.cap, cpu->rvbar);
+#else
         env->pc = cpu->rvbar;
+#endif
+
+    } else {
+#ifdef TARGET_CHERI
+        /*
+         * Not really possible since Morello does not support A32 but code path
+         * can be triggered from unit tests. Report a fatal error now rather
+         * than continuing and hitting an obscure assertion.
+         */
+        abort();
+#endif
     }
 
     /*

@@ -30,6 +30,7 @@ typedef size_t uc_hook;
 #include "x86.h"
 #include "arm.h"
 #include "arm64.h"
+#include "cheri.h"
 #include "mips.h"
 #include "sparc.h"
 #include "ppc.h"
@@ -117,7 +118,8 @@ typedef enum uc_mode {
     // arm / arm64
     UC_MODE_ARM = 0,        // ARM mode
     UC_MODE_THUMB = 1 << 4, // THUMB mode (including Thumb-2)
-    // Depreciated, use UC_ARM_CPU_* with uc_ctl instead.
+    UC_MODE_C64 = 1 << 11,  // ARMv8 C64 mode
+    // Deprecated, use UC_ARM_CPU_* with uc_ctl instead.
     UC_MODE_MCLASS = 1 << 5,  // ARM's Cortex-M series.
     UC_MODE_V8 = 1 << 6,      // ARMv8 A32 encodings for ARM
     UC_MODE_ARMBE8 = 1 << 10, // Big-endian data and Little-endian code.

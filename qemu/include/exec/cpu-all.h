@@ -261,6 +261,23 @@ extern TargetPageBits target_page;
  * Low-Address-Protection. Used with PAGE_WRITE in tlb_set_page_with_attrs() */
 #define PAGE_WRITE_INV 0x0040
 
+/* Target-specific bits that will be used via page_get_flags().  */
+#define PAGE_TARGET_1  0x0200
+#define PAGE_TARGET_2  0x0400
+#ifdef TARGET_CHERI
+#define PAGE_LC_CLEAR	0x8000
+#define PAGE_LC_TRAP	0x4000
+#define PAGE_SC_TRAP 0x10000
+#define PAGE_SC_CLEAR 0x20000
+// Like PAGE_LC_TRAP but will also trap loads of untagged values
+#define PAGE_LC_TRAP_ANY 0x40000
+#define PAGE_C_BITS                                                            \
+    (PAGE_LC_CLEAR | PAGE_LC_TRAP | PAGE_SC_TRAP | PAGE_SC_CLEAR |             \
+     PAGE_LC_TRAP_ANY)
+#else
+#define PAGE_C_BITS 0
+#endif
+
 CPUArchState *cpu_copy(CPUArchState *env);
 
 /* Flags for use in ENV->INTERRUPT_PENDING.

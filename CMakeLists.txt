@@ -82,6 +82,8 @@ include_directories(
     qemu/include
     include
     qemu/tcg
+
+    qemu/target/cheri-common
 )
 
 if(MSVC)
@@ -240,7 +242,7 @@ else()
         set(EXTRA_CFLAGS "${EXTRA_CFLAGS}-DUNICORN_HAS_ARM ")
     endif()
     if(UNICORN_HAS_AARCH64)
-        set(EXTRA_CFLAGS "${EXTRA_CFLAGS}-DUNICORN_HAS_ARM64 ")
+        set(EXTRA_CFLAGS "${EXTRA_CFLAGS}-DUNICORN_HAS_ARM64 -DUNICORN_HAS_ARM64C ")
     endif()
     if(UNICORN_HAS_M68K)
         set(EXTRA_CFLAGS "${EXTRA_CFLAGS}-DUNICORN_HAS_M68K ")
@@ -284,7 +286,7 @@ else()
         set(TARGET_LIST "${TARGET_LIST}arm-softmmu, ")
     endif()
     if(UNICORN_HAS_AARCH64)
-        set(TARGET_LIST "${TARGET_LIST}aarch64-softmmu, ")
+        set(TARGET_LIST "${TARGET_LIST}aarch64-softmmu, morello-softmmu, ")
     endif()
     if(UNICORN_HAS_M68K)
         set(TARGET_LIST "${TARGET_LIST}m68k-softmmu, ")
@@ -336,6 +338,10 @@ else()
         execute_process(COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/qemu/scripts/create_config
             INPUT_FILE ${CMAKE_BINARY_DIR}/aarch64-softmmu/config-target.mak
             OUTPUT_FILE ${CMAKE_BINARY_DIR}/aarch64-softmmu/config-target.h
+        )
+        execute_process(COMMAND sh ${CMAKE_CURRENT_SOURCE_DIR}/qemu/scripts/create_config
+            INPUT_FILE ${CMAKE_BINARY_DIR}/morello-softmmu/config-target.mak
+            OUTPUT_FILE ${CMAKE_BINARY_DIR}/morello-softmmu/config-target.h
         )
     endif()
     if(UNICORN_HAS_M68K)
@@ -446,6 +452,14 @@ set(UNICORN_ARCH_COMMON
     qemu/accel/tcg/tcg-runtime-gvec.c
     qemu/accel/tcg/translate-all.c
     qemu/accel/tcg/translator.c
+)
+
+set(CHERI_ARCH_COMMON
+    qemu/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap.c
+    qemu/target/cheri-common/cheri-compressed-cap/decompress_cap_128.c
+    qemu/target/cheri-common/cheri-compressed-cap/decompress_cap_128m.c
+    qemu/target/cheri-common/cheri_tagmem.c
+    qemu/target/cheri-common/op_helper_cheri_common.c
 )
 
 if(UNICORN_HAS_X86)
@@ -573,6 +587,8 @@ if(MSVC)
         /FIaarch64.h
         /I${CMAKE_CURRENT_SOURCE_DIR}/msvc/aarch64-softmmu
         /I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/arm
+        # /I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common
+        # /I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common/cheri-compressed-cap
     )
 else()
     target_compile_options(aarch64-softmmu PRIVATE
@@ -580,11 +596,71 @@ else()
         -include aarch64.h
         -I${CMAKE_BINARY_DIR}/aarch64-softmmu
         -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/arm
+        -Wno-unused-variable
+        -Wno-unused-function
+        # -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common
+        # -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common/cheri-compressed-cap
+        -ggdb
     )
 endif()
 
 if(UNICORN_TRACER)
     target_compile_options(aarch64-softmmu PRIVATE -DUNICORN_TRACER)
+endif()
+
+add_library(morello-softmmu STATIC
+    ${UNICORN_ARCH_COMMON}
+    ${CHERI_ARCH_COMMON}
+
+    qemu/target/arm/cpu64.c
+    qemu/target/arm/cpu.c
+    qemu/target/arm/crypto_helper.c
+    qemu/target/arm/debug_helper.c
+    qemu/target/arm/helper-a64.c
+    qemu/target/arm/helper.c
+    qemu/target/arm/cheri_helper.c
+    qemu/target/arm/iwmmxt_helper.c
+    qemu/target/arm/m_helper.c
+    qemu/target/arm/neon_helper.c
+    qemu/target/arm/op_helper.c
+    qemu/target/arm/pauth_helper.c
+    qemu/target/arm/psci.c
+    qemu/target/arm/sve_helper.c
+    qemu/target/arm/tlb_helper.c
+    qemu/target/arm/translate-a64.c
+    qemu/target/arm/translate.c
+    qemu/target/arm/translate-sve.c
+    qemu/target/arm/vec_helper.c
+    qemu/target/arm/vfp_helper.c
+    qemu/target/arm/unicorn_aarch64.c
+)
+
+if(MSVC)
+    target_compile_options(morello-softmmu PRIVATE
+        -DNEED_CPU_H
+        /FImorello.h
+        /I${CMAKE_CURRENT_SOURCE_DIR}/msvc/morello-softmmu
+        /I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/arm
+        /I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common
+        /I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common/cheri-compressed-cap
+    )
+else()
+    target_compile_options(morello-softmmu PRIVATE
+        -DNEED_CPU_H
+        -include morello.h
+        -I${CMAKE_BINARY_DIR}/morello-softmmu
+        -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/arm
+        -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common
+        -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common/cheri-compressed-cap
+        -Wno-unused-variable
+        -Wno-unused-function
+        -Werror=incompatible-pointer-types
+        -ggdb
+    )
+endif()
+
+if(UNICORN_TRACER)
+    target_compile_options(morello-softmmu PRIVATE -DUNICORN_TRACER)
 endif()
 
 endif()
@@ -1200,10 +1276,11 @@ if(UNICORN_HAS_ARM)
     set(UNICORN_TEST_FILE ${UNICORN_TEST_FILE} test_arm)
 endif()
 if(UNICORN_HAS_AARCH64)
-    set(UNICORN_COMPILE_OPTIONS ${UNICORN_COMPILE_OPTIONS} -DUNICORN_HAS_ARM64)
-    set(UNICORN_LINK_LIBRARIES ${UNICORN_LINK_LIBRARIES} aarch64-softmmu)
+    set(UNICORN_COMPILE_OPTIONS ${UNICORN_COMPILE_OPTIONS} -DUNICORN_HAS_ARM64 -DUNICORN_HAS_ARM64C)
+    set(UNICORN_LINK_LIBRARIES ${UNICORN_LINK_LIBRARIES} aarch64-softmmu morello-softmmu)
     set(UNICORN_SAMPLE_FILE ${UNICORN_SAMPLE_FILE} sample_arm64)
     target_link_libraries(aarch64-softmmu PRIVATE unicorn-common)
+    target_link_libraries(morello-softmmu PRIVATE unicorn-common)
     set(UNICORN_TEST_FILE ${UNICORN_TEST_FILE} test_arm64)
 endif()
 if(UNICORN_HAS_M68K)
@@ -1382,7 +1459,7 @@ else()
 endif()
 
 if(UNICORN_FUZZ)
-    set(UNICORN_FUZZ_SUFFIX "arm_arm;arm_armbe;arm_thumb;arm64_arm;arm64_armbe;m68k_be;mips_32be;mips_32le;sparc_32be;x86_16;x86_32;x86_64;s390x_be")
+    set(UNICORN_FUZZ_SUFFIX "arm_arm;arm_armbe;arm_thumb;arm64_arm;arm64_armbe;arm64_c64;m68k_be;mips_32be;mips_32le;sparc_32be;x86_16;x86_32;x86_64;s390x_be")
     if (NOT APPLE)
         set(SAMPLES_LIB ${SAMPLES_LIB} rt)
     endif()

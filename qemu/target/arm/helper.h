@@ -81,6 +81,12 @@ DEF_HELPER_2(v8m_stackcheck, void, env, i32)
 DEF_HELPER_4(access_check_cp_reg, void, env, ptr, i32, i32)
 DEF_HELPER_3(set_cp_reg, void, env, ptr, i32)
 DEF_HELPER_2(get_cp_reg, i32, env, ptr)
+
+#ifdef TARGET_CHERI
+DEF_HELPER_4(set_cp_cap, void, env, ptr, i64, i32)
+DEF_HELPER_3(get_cp_cap, i64, env, ptr, i32)
+#endif
+
 DEF_HELPER_3(set_cp_reg64, void, env, ptr, i64)
 DEF_HELPER_2(get_cp_reg64, i64, env, ptr)
 DEF_HELPER_3(uc_hooksys64, i32, env, i32, ptr)
@@ -703,4 +709,8 @@ DEF_HELPER_FLAGS_4(neon_pmull_h, TCG_CALL_NO_RWG, void, ptr, ptr, ptr, i32)
 #ifdef TARGET_AARCH64
 #include "helper-a64.h"
 #include "helper-sve.h"
+#endif
+
+#ifdef TARGET_CHERI
+#include "helper-cheri.h"
 #endif

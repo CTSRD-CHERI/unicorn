@@ -149,11 +149,12 @@ void *HELPER(lookup_tb_ptr)(CPUArchState *env)
 {
     CPUState *cpu = env_cpu(env);
     TranslationBlock *tb;
-    target_ulong cs_base, pc;
+    target_ulong cs_base, cs_top = 0, pc;
+    uint32_t cheri_flags = 0;
     uint32_t flags;
     struct uc_struct *uc = (struct uc_struct *)cpu->uc;
 
-    tb = tb_lookup__cpu_state(cpu, &pc, &cs_base, &flags, curr_cflags());
+    tb = tb_lookup__cpu_state(cpu, &pc, &cs_base, &cs_top, &cheri_flags, &flags, curr_cflags());
     if (tb == NULL) {
         return uc->tcg_ctx->code_gen_epilogue;
     }

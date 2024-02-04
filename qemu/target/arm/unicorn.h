@@ -22,6 +22,10 @@ int arm64_context_reg_read(struct uc_context *ctx, unsigned int *regs,
                            void **vals, int count);
 int arm64_context_reg_write(struct uc_context *ctx, unsigned int *regs,
                             void *const *vals, int count);
+int arm64c_context_reg_read(struct uc_context *ctx, unsigned int *regs,
+                           void **vals, int count);
+int arm64c_context_reg_write(struct uc_context *ctx, unsigned int *regs,
+                            void *const *vals, int count);
 
 void arm_reg_reset(struct uc_struct *uc);
 void arm64_reg_reset(struct uc_struct *uc);
@@ -29,4 +33,5 @@ void arm64_reg_reset(struct uc_struct *uc);
 void arm_uc_init(struct uc_struct *uc);
 
 void arm64_uc_init(struct uc_struct *uc);
+void arm64c_uc_init(struct uc_struct *uc);
 #endif

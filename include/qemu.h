@@ -18,6 +18,8 @@ struct uc_struct;
 
 #include "vl.h"
 
+struct CheriTagMem; // opaque struct
+
 // This struct is originally from qemu/include/exec/ramblock.h
 // Temporarily moved here since there is circular inclusion.
 struct RAMBlock {
@@ -27,9 +29,14 @@ struct RAMBlock {
     ram_addr_t used_length;
     ram_addr_t max_length;
     uint32_t flags;
+    /* Protected by iothread lock.  */
+    char idstr[256];
     /* RCU-enabled, writes protected by the ramlist lock */
     QLIST_ENTRY(RAMBlock) next;
     size_t page_size;
+
+    /* Bitmap of CHERI tag bits */
+    struct CheriTagMem *cheri_tags;
 };
 
 typedef struct {

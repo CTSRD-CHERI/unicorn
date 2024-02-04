@@ -11,16 +11,32 @@
 #include "uc_priv.h"
 #include "unicorn.h"
 
+// #include "cheri_compressed_cap_common.h"  // the macro is undefined at the end of the file!
+
+#ifdef TARGET_CHERI
+
+#define CC_FORMAT_LOWER 128m
+#define CC_FORMAT_UPPER 128M
+
+#define _cc_N(name) _CC_CONCAT(_CC_CONCAT(_CC_CONCAT(cc, CC_FORMAT_LOWER), _), name)
+#define _CC_N(name) _CC_CONCAT(_CC_CONCAT(_CC_CONCAT(CC, CC_FORMAT_UPPER), _), name)
+
+#endif
+
 ARMCPU *cpu_aarch64_init(struct uc_struct *uc);
 
 static void arm64_set_pc(struct uc_struct *uc, uint64_t address)
 {
-    ((CPUARMState *)uc->cpu->env_ptr)->pc = address;
+#ifdef TARGET_CHERI
+    set_max_perms_capability(&((CPUARMState *)uc->cpu->env_ptr)->pc.cap, address);
+#else
+    set_aarch_reg_value(&((CPUARMState *)uc->cpu->env_ptr)->pc, address);
+#endif
 }
 
 static uint64_t arm64_get_pc(struct uc_struct *uc)
 {
-    return ((CPUARMState *)uc->cpu->env_ptr)->pc;
+    return get_aarch_reg_as_x(&((CPUARMState *)uc->cpu->env_ptr)->pc);
 }
 
 static void arm64_release(void *ctx)
@@ -88,12 +104,17 @@ static void arm64_release(void *ctx)
     g_hash_table_destroy(cpu->cp_regs);
 }
 
+// This is called at uc_init
 void arm64_reg_reset(struct uc_struct *uc)
 {
     CPUArchState *env = uc->cpu->env_ptr;
+#ifdef TARGET_CHERI
+    reset_capregs(env);
+    set_max_perms_capability(&env->pc.cap, 0);
+#else
     memset(env->xregs, 0, sizeof(env->xregs));
-
     env->pc = 0;
+#endif
 }
 
 static uc_err read_cp_reg(CPUARMState *env, uc_arm64_cp_reg *cp)
@@ -106,7 +127,7 @@ static uc_err read_cp_reg(CPUARMState *env, uc_arm64_cp_reg *cp)
     if (!ri) {
         return UC_ERR_ARG;
     }
-
+    // XXXR3: todo, migrate to caps
     cp->val = read_raw_cp_reg(env, ri);
 
     return UC_ERR_OK;
@@ -122,21 +143,69 @@ static uc_err write_cp_reg(CPUARMState *env, uc_arm64_cp_reg *cp)
     if (!ri) {
         return UC_ERR_ARG;
     }
-
-    if (ri->raw_writefn) {
-        ri->raw_writefn(env, ri, cp->val);
-    } else if (ri->writefn) {
-        ri->writefn(env, ri, cp->val);
-    } else {
-        if (cpreg_field_is_64bit(ri)) {
-            CPREG_FIELD64(env, ri) = cp->val;
-        } else {
-            CPREG_FIELD32(env, ri) = cp->val;
-        }
-    }
+    // XXXR3: todo, migrate to caps
+    write_raw_cp_reg(env, ri, cp->val);
 
     return UC_ERR_OK;
 }
+
+#ifdef TARGET_CHERI
+
+static uc_err read_cap_reg(CPUARMState *env, unsigned int regid, uc_cheri_cap *cap)
+{
+    cap_register_t *capreg = get_readonly_capreg(env, regid);
+
+    cap->address = capreg->_cr_cursor;
+    cap->base = capreg->cr_base;
+    cap->top = capreg->_cr_top;
+    cap->tag = capreg->cr_tag;
+    cap->uperms = cap_get_uperms(capreg);
+    cap->perms = cap_get_perms(capreg);
+    cap->type = cap_get_otype_unsigned(capreg);
+
+    return UC_ERR_OK;
+}
+
+static uc_err write_cap_reg(CPUARMState *env, unsigned int regid, uc_cheri_cap *cap)
+{
+    cap_register_t capreg;
+    memset(&capreg, 0, sizeof(capreg));
+    capreg._cr_cursor = cap->address;
+    capreg.cr_base = cap->base;
+    capreg._cr_top = cap->top;
+    capreg.cr_tag = cap->tag;
+    // encode permissions and otype FIXME
+    capreg.cr_pesbt = _CC_ENCODE_FIELD(_CC_N(UPERMS_ALL), UPERMS) | _CC_ENCODE_FIELD(_CC_N(PERMS_ALL), HWPERMS) |
+                    _CC_ENCODE_FIELD(_CC_N(OTYPE_UNSEALED), OTYPE);
+    
+    // compress
+    bool exact = false;
+    capreg.cr_exp = CC128M_RESET_EXP;
+    uint32_t new_ebt = cc128m_compute_ebt(cap->base, cap->top, NULL, &exact);
+    uint64_t new_base;
+    __uint128_t new_top;
+    bool new_bounds_valid = cc128m_compute_base_top(cc128m_extract_bounds_bits(_CC_ENCODE_FIELD(new_ebt, EBT)),
+                                                    capreg._cr_cursor, &new_base, &new_top);
+    // see setbounds_impl
+    cc128m_update_ebt(&capreg, new_ebt);
+    capreg.cr_bounds_valid = new_bounds_valid;
+    capreg.cr_extra = CREG_FULLY_DECOMPRESSED;
+
+    update_capreg(env, regid, &capreg);
+
+    // printf("tag: %x\n,", capreg.cr_tag);
+    // printf("bounds_valid: %d\n,", capreg.cr_bounds_valid);
+    // printf cap_get_length()
+
+    // cap_register_t capreg = CAP_cc(make_max_perms_cap)(0, cap->address, CAP_MAX_TOP);
+    // capreg.cr_extra = CREG_FULLY_DECOMPRESSED;
+    // update_capreg(env, regid, &capreg);
+
+    // XXXR3: todo, warn when the bounds are not exact
+    return UC_ERR_OK;
+}
+
+#endif
 
 static uc_err reg_read(CPUARMState *env, unsigned int regid, void *value)
 {
@@ -145,10 +214,15 @@ static uc_err reg_read(CPUARMState *env, unsigned int regid, void *value)
     if (regid >= UC_ARM64_REG_V0 && regid <= UC_ARM64_REG_V31) {
         regid += UC_ARM64_REG_Q0 - UC_ARM64_REG_V0;
     }
+#ifdef TARGET_CHERI
+    if (regid >= UC_ARM64_REG_C0 && regid <= UC_ARM64_REG_C28) {
+        ret = read_cap_reg(env, regid - UC_ARM64_REG_C0, (uc_cheri_cap *)value);
+    } else
+#endif
     if (regid >= UC_ARM64_REG_X0 && regid <= UC_ARM64_REG_X28) {
-        *(int64_t *)value = env->xregs[regid - UC_ARM64_REG_X0];
+        *(int64_t *)value = arm_get_xreg(env, regid - UC_ARM64_REG_X0);
     } else if (regid >= UC_ARM64_REG_W0 && regid <= UC_ARM64_REG_W30) {
-        *(int32_t *)value = READ_DWORD(env->xregs[regid - UC_ARM64_REG_W0]);
+        *(int32_t *)value = READ_DWORD(arm_get_xreg(env, regid - UC_ARM64_REG_W0));
     } else if (regid >= UC_ARM64_REG_Q0 && regid <= UC_ARM64_REG_Q31) { // FIXME
         float64 *dst = (float64 *)value;
         uint32_t reg_index = regid - UC_ARM64_REG_Q0;
@@ -166,16 +240,16 @@ static uc_err reg_read(CPUARMState *env, unsigned int regid, void *value)
         *(int8_t *)value =
             READ_BYTE_L(env->vfp.zregs[regid - UC_ARM64_REG_B0].d[0]);
     } else if (regid >= UC_ARM64_REG_ELR_EL0 && regid <= UC_ARM64_REG_ELR_EL3) {
-        *(uint64_t *)value = env->elr_el[regid - UC_ARM64_REG_ELR_EL0];
+        *(uint64_t *)value = get_aarch_reg_as_x(&env->elr_el[regid - UC_ARM64_REG_ELR_EL0]); 
     } else if (regid >= UC_ARM64_REG_SP_EL0 && regid <= UC_ARM64_REG_SP_EL3) {
-        *(uint64_t *)value = env->sp_el[regid - UC_ARM64_REG_SP_EL0];
+        *(uint64_t *)value = get_aarch_reg_as_x(&env->sp_el[regid - UC_ARM64_REG_SP_EL0]);
     } else if (regid >= UC_ARM64_REG_ESR_EL0 && regid <= UC_ARM64_REG_ESR_EL3) {
         *(uint64_t *)value = env->cp15.esr_el[regid - UC_ARM64_REG_ESR_EL0];
     } else if (regid >= UC_ARM64_REG_FAR_EL0 && regid <= UC_ARM64_REG_FAR_EL3) {
         *(uint64_t *)value = env->cp15.far_el[regid - UC_ARM64_REG_FAR_EL0];
     } else if (regid >= UC_ARM64_REG_VBAR_EL0 &&
                regid <= UC_ARM64_REG_VBAR_EL3) {
-        *(uint64_t *)value = env->cp15.vbar_el[regid - UC_ARM64_REG_VBAR_EL0];
+        *(uint64_t *)value = get_aarch_reg_as_x(&env->cp15.vbar_el[regid - UC_ARM64_REG_VBAR_EL0]);
     } else {
         switch (regid) {
         default:
@@ -184,25 +258,36 @@ static uc_err reg_read(CPUARMState *env, unsigned int regid, void *value)
             *(uint32_t *)value = env->cp15.cpacr_el1;
             break;
         case UC_ARM64_REG_TPIDR_EL0:
-            *(int64_t *)value = env->cp15.tpidr_el[0];
+            *(int64_t *)value = get_aarch_reg_as_x(&env->cp15.tpidr_el[0]);
             break;
         case UC_ARM64_REG_TPIDRRO_EL0:
-            *(int64_t *)value = env->cp15.tpidrro_el[0];
+            *(int64_t *)value = get_aarch_reg_as_x(&env->cp15.tpidrro_el[0]);
             break;
         case UC_ARM64_REG_TPIDR_EL1:
-            *(int64_t *)value = env->cp15.tpidr_el[1];
+            *(int64_t *)value = get_aarch_reg_as_x(&env->cp15.tpidr_el[1]);
             break;
         case UC_ARM64_REG_X29:
-            *(int64_t *)value = env->xregs[29];
+            *(int64_t *)value = arm_get_xreg(env, 29);
             break;
         case UC_ARM64_REG_X30:
-            *(int64_t *)value = env->xregs[30];
+            *(int64_t *)value = arm_get_xreg(env, 30);
             break;
         case UC_ARM64_REG_PC:
-            *(uint64_t *)value = env->pc;
+#ifdef TARGET_CHERI
+            cap_register_t *pcc = _cheri_get_pcc_unchecked(env);
+            ((uc_cheri_cap *)value)->address = pcc->_cr_cursor;
+            ((uc_cheri_cap *)value)->base = pcc->cr_base;
+            ((uc_cheri_cap *)value)->top = pcc->_cr_top;
+            ((uc_cheri_cap *)value)->tag = pcc->cr_tag;
+            ((uc_cheri_cap *)value)->uperms = cap_get_uperms(pcc);
+            ((uc_cheri_cap *)value)->perms = cap_get_perms(pcc);
+            ((uc_cheri_cap *)value)->type = cap_get_otype_unsigned(pcc);
+#else
+            *(uint64_t *)value = get_aarch_reg_as_x(&env->pc);
+#endif
             break;
         case UC_ARM64_REG_SP:
-            *(int64_t *)value = env->xregs[31];
+            *(int64_t *)value = arm_get_xreg(env, 31);
             break;
         case UC_ARM64_REG_NZCV:
             *(int32_t *)value = cpsr_read(env) & CPSR_NZCV;
@@ -244,10 +329,17 @@ static uc_err reg_write(CPUARMState *env, unsigned int regid, const void *value)
     if (regid >= UC_ARM64_REG_V0 && regid <= UC_ARM64_REG_V31) {
         regid += UC_ARM64_REG_Q0 - UC_ARM64_REG_V0;
     }
+#ifdef TARGET_CHERI
+    if (regid >= UC_ARM64_REG_C0 && regid <= UC_ARM64_REG_C28) {
+        ret = write_cap_reg(env, regid - UC_ARM64_REG_C0, (uc_cheri_cap *)value);
+    } else 
+#endif
     if (regid >= UC_ARM64_REG_X0 && regid <= UC_ARM64_REG_X28) {
-        env->xregs[regid - UC_ARM64_REG_X0] = *(uint64_t *)value;
+        arm_set_xreg(env, regid - UC_ARM64_REG_X0, *(uint64_t *)value);
     } else if (regid >= UC_ARM64_REG_W0 && regid <= UC_ARM64_REG_W30) {
-        WRITE_DWORD(env->xregs[regid - UC_ARM64_REG_W0], *(uint32_t *)value);
+        uint64_t old_val = arm_get_xreg(env, regid - UC_ARM64_REG_W0);
+        uint64_t new_val = (old_val & ~0xffffffffLL) | (*(uint32_t *)value & 0xffffffff);
+        arm_set_xreg(env, regid - UC_ARM64_REG_W0, new_val);
     } else if (regid >= UC_ARM64_REG_Q0 && regid <= UC_ARM64_REG_Q31) {
         float64 *src = (float64 *)value;
         uint32_t reg_index = regid - UC_ARM64_REG_Q0;
@@ -265,16 +357,16 @@ static uc_err reg_write(CPUARMState *env, unsigned int regid, const void *value)
         WRITE_BYTE_L(env->vfp.zregs[regid - UC_ARM64_REG_B0].d[0],
                      *(int8_t *)value);
     } else if (regid >= UC_ARM64_REG_ELR_EL0 && regid <= UC_ARM64_REG_ELR_EL3) {
-        env->elr_el[regid - UC_ARM64_REG_ELR_EL0] = *(uint64_t *)value;
+        set_aarch_reg_value(&env->elr_el[regid - UC_ARM64_REG_ELR_EL0], *(uint64_t *)value);
     } else if (regid >= UC_ARM64_REG_SP_EL0 && regid <= UC_ARM64_REG_SP_EL3) {
-        env->sp_el[regid - UC_ARM64_REG_SP_EL0] = *(uint64_t *)value;
+        set_aarch_reg_value(&env->sp_el[regid - UC_ARM64_REG_SP_EL0], *(uint64_t *)value);
     } else if (regid >= UC_ARM64_REG_ESR_EL0 && regid <= UC_ARM64_REG_ESR_EL3) {
         env->cp15.esr_el[regid - UC_ARM64_REG_ESR_EL0] = *(uint64_t *)value;
     } else if (regid >= UC_ARM64_REG_FAR_EL0 && regid <= UC_ARM64_REG_FAR_EL3) {
         env->cp15.far_el[regid - UC_ARM64_REG_FAR_EL0] = *(uint64_t *)value;
     } else if (regid >= UC_ARM64_REG_VBAR_EL0 &&
                regid <= UC_ARM64_REG_VBAR_EL3) {
-        env->cp15.vbar_el[regid - UC_ARM64_REG_VBAR_EL0] = *(uint64_t *)value;
+        set_aarch_reg_value(&env->cp15.vbar_el[regid - UC_ARM64_REG_VBAR_EL0], *(uint64_t *)value);
     } else {
         switch (regid) {
         default:
@@ -283,25 +375,29 @@ static uc_err reg_write(CPUARMState *env, unsigned int regid, const void *value)
             env->cp15.cpacr_el1 = *(uint32_t *)value;
             break;
         case UC_ARM64_REG_TPIDR_EL0:
-            env->cp15.tpidr_el[0] = *(uint64_t *)value;
+            set_aarch_reg_value(&env->cp15.tpidr_el[0], *(uint64_t *)value);
             break;
         case UC_ARM64_REG_TPIDRRO_EL0:
-            env->cp15.tpidrro_el[0] = *(uint64_t *)value;
+            set_aarch_reg_value(&env->cp15.tpidrro_el[0], *(uint64_t *)value);
             break;
         case UC_ARM64_REG_TPIDR_EL1:
-            env->cp15.tpidr_el[1] = *(uint64_t *)value;
+            set_aarch_reg_value(&env->cp15.tpidr_el[1], *(uint64_t *)value);
             break;
         case UC_ARM64_REG_X29:
-            env->xregs[29] = *(uint64_t *)value;
+            arm_set_xreg(env, 29, *(uint64_t *)value);
             break;
         case UC_ARM64_REG_X30:
-            env->xregs[30] = *(uint64_t *)value;
+            arm_set_xreg(env, 30, *(uint64_t *)value);
             break;
         case UC_ARM64_REG_PC:
-            env->pc = *(uint64_t *)value;
+#ifdef TARGET_CHERI
+            set_max_perms_capability(&env->pc.cap, *(uint64_t *)value);
+#else
+            set_aarch_reg_value(&env->pc, *(uint64_t *)value);
+#endif
             break;
         case UC_ARM64_REG_SP:
-            env->xregs[31] = *(uint64_t *)value;
+            arm_set_xreg(env, 31, *(uint64_t *)value);
             break;
         case UC_ARM64_REG_NZCV:
             cpsr_write(env, *(uint32_t *)value, CPSR_NZCV, CPSRWriteRaw);
@@ -384,8 +480,13 @@ DEFAULT_VISIBILITY
 int arm64eb_context_reg_read(struct uc_context *ctx, unsigned int *regs,
                              void **vals, int count)
 #else
+#ifdef TARGET_CHERI
+int arm64c_context_reg_read(struct uc_context *ctx, unsigned int *regs,
+                           void **vals, int count)
+#else
 int arm64_context_reg_read(struct uc_context *ctx, unsigned int *regs,
                            void **vals, int count)
+#endif
 #endif
 {
     CPUARMState *env = (CPUARMState *)ctx->data;
@@ -409,8 +510,13 @@ DEFAULT_VISIBILITY
 int arm64eb_context_reg_write(struct uc_context *ctx, unsigned int *regs,
                               void *const *vals, int count)
 #else
+#ifdef TARGET_CHERI
+int arm64c_context_reg_write(struct uc_context *ctx, unsigned int *regs,
+                            void *const *vals, int count)
+#else
 int arm64_context_reg_write(struct uc_context *ctx, unsigned int *regs,
                             void *const *vals, int count)
+#endif
 #endif
 {
     CPUARMState *env = (CPUARMState *)ctx->data;
@@ -442,7 +548,11 @@ static int arm64_cpus_init(struct uc_struct *uc, const char *cpu_model)
 }
 
 DEFAULT_VISIBILITY
+#ifdef TARGET_CHERI
+void arm64c_uc_init(struct uc_struct *uc)
+#else
 void arm64_uc_init(struct uc_struct *uc)
+#endif
 {
     uc->reg_read = arm64_reg_read;
     uc->reg_write = arm64_reg_write;
@@ -450,6 +560,8 @@ void arm64_uc_init(struct uc_struct *uc)
     uc->set_pc = arm64_set_pc;
     uc->get_pc = arm64_get_pc;
     uc->release = arm64_release;
+    // XXXR3: todo, query mode, A64 or C64
+    // uc->query = arm64_query;
     uc->cpus_init = arm64_cpus_init;
     uc->cpu_context_size = offsetof(CPUARMState, cpu_watchpoint);
     uc_common_init(uc);

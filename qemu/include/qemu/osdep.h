@@ -291,6 +291,15 @@ struct uc_struct;
 /* Check if pointer p is n-bytes aligned */
 #define QEMU_PTR_IS_ALIGNED(p, n) QEMU_IS_ALIGNED((uintptr_t)(p), (n))
 
+/* Check if n is a multiple of m (m must be a power of two).
+ * This can be use to generate more efficient code if the alignment argument
+ * is not a constant. */
+#if __has_builtin(__builtin_is_aligned)
+#define QEMU_IS_ALIGNED_P2(n, m) __builtin_is_aligned(n, m)
+#else
+#define QEMU_IS_ALIGNED_P2(n, m) (((n) & ((m) - 1)) == 0)
+#endif
+
 /* Round number up to multiple. Requires that d be a power of 2 (see
  * QEMU_ALIGN_UP for a safer but slower version on arbitrary
  * numbers); works even if d is a smaller type than n.  */

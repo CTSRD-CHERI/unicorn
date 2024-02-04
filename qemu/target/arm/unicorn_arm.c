@@ -501,7 +501,7 @@ int arm_reg_read(struct uc_struct *uc, unsigned int *regs, void **vals,
 int arm_reg_write(struct uc_struct *uc, unsigned int *regs, void *const *vals,
                   int count)
 {
-    CPUArchState *env = &(ARM_CPU(uc->cpu)->env);
+    CPUARMState *env = &(ARM_CPU(uc->cpu)->env);
     int i;
     uc_err err;
 

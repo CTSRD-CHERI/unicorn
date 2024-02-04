@@ -139,8 +139,45 @@ typedef struct CPUIOTLBEntry {
      *     + the offset within the target MemoryRegion (otherwise)
      */
     hwaddr addr;
+#ifdef TARGET_CHERI
+#define TLBENTRYCAP_MASK (uintptr_t)0x7
+    /* Trap if a non-zero tag is read/written. */
+#define TLBENTRYCAP_FLAG_TRAP (uintptr_t)0x1
+    /* Trap if any tag is read/written */
+#define TLBENTRYCAP_FLAG_TRAP_ANY (uintptr_t)0x4
+    /* Clear any tag read/written. */
+#define TLBENTRYCAP_FLAG_CLEAR (uintptr_t)0x2
+    /* This page contains only zero tag bits. */
+#define ALL_ZERO_TAGBLK ((void *)(uintptr_t)(~0 & ~TLBENTRYCAP_MASK))
+    /*
+     * Just as with CPUTLBEntry we split this via read/write for simpler logic
+     * generation. Eventually it will be moved there for fast TCG access.
+     * The lowest two bits of each address stash trapping/clearing.
+     */
+    uintptr_t tagmem_read;
+    /*
+     * There are two reasons to trap on writing a tag. The first is if MMU
+     * protection bits indicate that stores should trap. The second is that no
+     * tag block has been allocated. In order to align these cases, when there
+     * is no block allocated yet (and tags are not being clared), we add in the
+     * trap flag so tlb_fill will be called. It will then allocate a tagblock
+     * (and the suprious FLAG_TRAP will be removed), or will throw an exception.
+     */
+#define TLBENTRYCAP_INVALID_WRITE_MASK                                         \
+    (TLBENTRYCAP_FLAG_TRAP | TLBENTRYCAP_FLAG_CLEAR)
+#define TLBENTRYCAP_INVALID_WRITE_VALUE (TLBENTRYCAP_FLAG_TRAP)
+    uintptr_t tagmem_write;
+#endif
     MemTxAttrs attrs;
 } CPUIOTLBEntry;
+
+#define IOTLB_GET_TAGMEM(iotlbentry, rw)                                       \
+    ({                                                                         \
+        cheri_debug_assert(iotlbentry->tagmem_##rw != (uintptr_t)0);           \
+        (void *)((uintptr_t)iotlbentry->tagmem_##rw & ~TLBENTRYCAP_MASK);      \
+    })
+#define IOTLB_GET_TAGMEM_FLAGS(iotlbentry, rw)                                 \
+    ((uintptr_t)iotlbentry->tagmem_##rw & TLBENTRYCAP_MASK);
 
 /*
  * Data elements that are per MMU mode, minus the bits accessed by

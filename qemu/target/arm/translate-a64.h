@@ -31,6 +31,7 @@ typedef struct TCGContext TCGContext;
     } while (0)
 
 TCGv_i64 new_tmp_a64(DisasContext *s);
+TCGv_i64 new_tmp_a64_local(DisasContext *s);
 TCGv_i64 new_tmp_a64_zero(DisasContext *s);
 TCGv_i64 cpu_reg(DisasContext *s, int reg);
 TCGv_i64 cpu_reg_sp(DisasContext *s, int reg);
@@ -41,6 +42,26 @@ TCGv_ptr get_fpstatus_ptr(TCGContext *tcg_ctx, bool);
 bool logic_imm_decode_wmask(uint64_t *result, unsigned int immn,
                             unsigned int imms, unsigned int immr);
 bool sve_access_check(DisasContext *s);
+// XXXR3: because qemu-cheri embeds the CHERI checks in MTE checks
+// and Unicorn doesn't have support for MTE now... this looks ugly
+TCGv_i64 clean_data_tbi(DisasContext *s, TCGv_i64 addr);
+TCGv_cap_checked_ptr clean_data_tbi_and_cheri(DisasContext *s, TCGv_i64 addr,
+                                              bool is_load, bool is_store,
+                                              int size, int base_reg,
+                                              bool alternate_base,
+                                              bool ddc_base);
+
+// TCGv_cap_checked_ptr gen_mte_and_cheri_check1(DisasContext *s, TCGv_i64 addr,
+//                                               bool is_read, bool is_write,
+//                                               bool tag_checked, int log2_size,
+//                                               int base_reg, bool alternate_base,
+//                                               bool ddc_base);
+// TCGv_cap_checked_ptr gen_mte_and_cheri_checkN(DisasContext *s, TCGv_i64 addr,
+//                                               bool is_read, bool is_write,
+//                                               bool tag_checked, int log2_esize,
+//                                               int total_size, int base_reg,
+//                                               bool alternate_base,
+//                                               bool ddc_base);
 
 /* We should have at some point before trying to access an FP register
  * done the necessary access check, so assert that

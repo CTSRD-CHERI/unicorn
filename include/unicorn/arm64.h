@@ -20,6 +20,7 @@ typedef enum uc_cpu_arm64 {
     UC_CPU_ARM64_A57 = 0,
     UC_CPU_ARM64_A53,
     UC_CPU_ARM64_A72,
+    UC_CPU_ARM64_MORELLO,
     UC_CPU_ARM64_MAX,
 
     UC_CPU_ARM64_ENDING
@@ -42,6 +43,8 @@ typedef enum uc_arm64_reg {
 
     UC_ARM64_REG_X29,
     UC_ARM64_REG_X30,
+    UC_ARM64_REG_C29,
+    UC_ARM64_REG_C30,
     UC_ARM64_REG_NZCV,
     UC_ARM64_REG_SP,
     UC_ARM64_REG_WSP,
@@ -267,6 +270,35 @@ typedef enum uc_arm64_reg {
     UC_ARM64_REG_X26,
     UC_ARM64_REG_X27,
     UC_ARM64_REG_X28,
+    UC_ARM64_REG_C0,
+    UC_ARM64_REG_C1,
+    UC_ARM64_REG_C2,
+    UC_ARM64_REG_C3,
+    UC_ARM64_REG_C4,
+    UC_ARM64_REG_C5,
+    UC_ARM64_REG_C6,
+    UC_ARM64_REG_C7,
+    UC_ARM64_REG_C8,
+    UC_ARM64_REG_C9,
+    UC_ARM64_REG_C10,
+    UC_ARM64_REG_C11,
+    UC_ARM64_REG_C12,
+    UC_ARM64_REG_C13,
+    UC_ARM64_REG_C14,
+    UC_ARM64_REG_C15,
+    UC_ARM64_REG_C16,
+    UC_ARM64_REG_C17,
+    UC_ARM64_REG_C18,
+    UC_ARM64_REG_C19,
+    UC_ARM64_REG_C20,
+    UC_ARM64_REG_C21,
+    UC_ARM64_REG_C22,
+    UC_ARM64_REG_C23,
+    UC_ARM64_REG_C24,
+    UC_ARM64_REG_C25,
+    UC_ARM64_REG_C26,
+    UC_ARM64_REG_C27,
+    UC_ARM64_REG_C28,
 
     UC_ARM64_REG_V0,
     UC_ARM64_REG_V1,
@@ -356,12 +388,19 @@ typedef enum uc_arm64_reg {
 
     UC_ARM64_REG_ENDING, // <-- mark the end of the list of registers
 
+    // XXXR3: the aliased regs depend on the mode, eg. C registers for C64
     //> alias registers
-
+#ifdef TARGET_CHERI
+    UC_ARM64_REG_IP0 = UC_ARM64_REG_C16,
+    UC_ARM64_REG_IP1 = UC_ARM64_REG_C17,
+    UC_ARM64_REG_FP = UC_ARM64_REG_C29,
+    UC_ARM64_REG_LR = UC_ARM64_REG_C30,
+#else
     UC_ARM64_REG_IP0 = UC_ARM64_REG_X16,
     UC_ARM64_REG_IP1 = UC_ARM64_REG_X17,
     UC_ARM64_REG_FP = UC_ARM64_REG_X29,
     UC_ARM64_REG_LR = UC_ARM64_REG_X30,
+#endif
 } uc_arm64_reg;
 
 // Callback function for tracing MRS/MSR/SYS/SYSL. If this callback returns

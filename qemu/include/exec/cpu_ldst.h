@@ -86,6 +86,13 @@ void cpu_stl_data_ra(CPUArchState *env, abi_ptr ptr,
 void cpu_stq_data_ra(CPUArchState *env, abi_ptr ptr,
                      uint64_t val, uintptr_t retaddr);
 
+#ifdef TARGET_CHERI
+target_ulong cpu_ld_cap_word_ra(CPUArchState *env, target_ulong ptr,
+                                uintptr_t retaddr);
+void cpu_st_cap_word_ra(CPUArchState *env, target_ulong ptr,
+                        target_ulong val, uintptr_t retaddr);
+#endif
+
 /* Needed for TCG_OVERSIZED_GUEST */
 #include "tcg/tcg.h"
 

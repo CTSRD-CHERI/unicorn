@@ -387,6 +387,13 @@ typedef TCGv_ptr TCGv_env;
 #error Unhandled TARGET_LONG_BITS value
 #endif
 
+#ifdef TARGET_CHERI
+/* Use a different type to get compiler warnings */
+typedef struct TCGv_cap_checked_ptr_tl_d *TCGv_cap_checked_ptr;
+#else
+#define TCGv_cap_checked_ptr TCGv
+#endif
+
 /* call flags */
 /* Helper does not read globals (either directly or through an exception). It
    implies TCG_CALL_NO_WRITE_GLOBALS. */
@@ -696,6 +703,9 @@ struct TCGContext {
     GHashTable *helper_table;
     GHashTable *custom_helper_infos; // To support inline hooks.
     TCGv_ptr cpu_env;
+#ifdef TARGET_CHERI
+    TCGv ddc_interposition;
+#endif
     struct tcg_region_state region;
     GTree *tree;
     TCGRegSet tcg_target_available_regs[TCG_TYPE_COUNT];
@@ -735,10 +745,21 @@ struct TCGContext {
     TCGv_i64 cpu_exclusive_val;
 
     // target/arm/translate-a64.c
+#ifndef TARGET_CHERI
     TCGv_i64 cpu_X[32];
     TCGv_i64 cpu_pc_arm64;
+#else
+    TCGv _cpu_cursors_do_not_access_directly[32];
+    TCGv cpu_pc_arm64;
+    // Its probably better to ensure people mean to access just the cursor
+    // by having different names.
+    // For now just use this define to avoid a further refactor.
+    #define cpu_X _cpu_cursors_do_not_access_directly
+#endif
     /* Load/store exclusive handling */
     TCGv_i64 cpu_exclusive_high;
+
+    // target/arm/translate-cheri.c
 
     // target/mips/translate.c
     // #define MIPS_DSP_ACC 4
@@ -852,6 +873,11 @@ static inline TCGTemp *tcgv_i64_temp(TCGContext *tcg_ctx, TCGv_i64 v)
 }
 
 static inline TCGTemp *tcgv_ptr_temp(TCGContext *tcg_ctx, TCGv_ptr v)
+{
+    return tcgv_i32_temp(tcg_ctx, (TCGv_i32)v);
+}
+
+static inline TCGTemp *tcgv_cap_checked_ptr_temp(TCGContext *tcg_ctx, TCGv_cap_checked_ptr v)
 {
     return tcgv_i32_temp(tcg_ctx, (TCGv_i32)v);
 }

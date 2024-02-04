@@ -21,7 +21,7 @@
 #define UC_MODE_ARM_MASK                                                       \
     (UC_MODE_ARM | UC_MODE_THUMB | UC_MODE_LITTLE_ENDIAN | UC_MODE_MCLASS |    \
      UC_MODE_ARM926 | UC_MODE_ARM946 | UC_MODE_ARM1176 | UC_MODE_BIG_ENDIAN |  \
-     UC_MODE_ARMBE8)
+     UC_MODE_ARMBE8 | UC_MODE_C64)
 #define UC_MODE_MIPS_MASK                                                      \
     (UC_MODE_MIPS32 | UC_MODE_MIPS64 | UC_MODE_LITTLE_ENDIAN |                 \
      UC_MODE_BIG_ENDIAN)
