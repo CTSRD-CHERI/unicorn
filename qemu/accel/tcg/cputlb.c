@@ -32,6 +32,7 @@
 #include "translate-all.h"
 #include "exec/cpu-common.h"
 #include "trace/mem.h"
+#include "cheri_tagmem.h"
 
 #include <uc_priv.h>
 
@@ -801,6 +802,17 @@ void tlb_set_page_with_attrs(CPUState *cpu, target_ulong vaddr,
                                                 &xlat, &sz, attrs, &prot);
     assert(sz >= TARGET_PAGE_SIZE);
 
+#ifdef TARGET_CHERI
+    bool tag_setting = attrs.tag_setting != 0;
+    /*
+     * Getting tagmem can cause an invalidation, so best to do this before
+     * any other entries are modified.
+     */
+    uintptr_t tagmem = (uintptr_t)cheri_tagmem_for_addr(
+        env, vaddr, section->mr->ram_block, xlat, size, &prot, tag_setting);
+    assert((tagmem & TLBENTRYCAP_MASK) == 0);
+#endif
+
     address = vaddr_page;
     if (size < TARGET_PAGE_SIZE) {
         /* Repeat the MMU check and TLB fill on every access.  */
@@ -889,6 +901,31 @@ void tlb_set_page_with_attrs(CPUState *cpu, target_ulong vaddr,
      * vaddr we add back in io_readx()/io_writex()/get_page_addr_code().
      */
     desc->iotlb[index].addr = iotlb - vaddr_page;
+#ifdef TARGET_CHERI
+    /*
+     * Cache the CHERI tag block. This massively speeds up running QEMU: before
+     * we added this optimization 10-25% of total runtime could be spent
+     * looking up tag blocks for a given virtual address.
+     */
+    desc->iotlb[index].tagmem_write = desc->iotlb[index].tagmem_read = tagmem;
+
+    if (prot & PAGE_LC_CLEAR) {
+        desc->iotlb[index].tagmem_read |= TLBENTRYCAP_FLAG_CLEAR;
+    }
+    if (prot & PAGE_LC_TRAP) {
+        desc->iotlb[index].tagmem_read |= TLBENTRYCAP_FLAG_TRAP;
+    }
+    if (prot & PAGE_LC_TRAP_ANY) {
+        desc->iotlb[index].tagmem_read |= TLBENTRYCAP_FLAG_TRAP_ANY;
+    }
+    if (prot & PAGE_SC_CLEAR) {
+        desc->iotlb[index].tagmem_write |= TLBENTRYCAP_FLAG_CLEAR;
+    }
+    if (prot & PAGE_SC_TRAP) {
+        desc->iotlb[index].tagmem_write |= TLBENTRYCAP_FLAG_TRAP;
+    }
+
+#endif
     desc->iotlb[index].attrs = attrs;
 
     /* Now calculate the new entry */
@@ -1049,7 +1086,7 @@ static inline target_ulong tlb_read_ofs(CPUTLBEntry *entry, size_t ofs)
 /* Return true if ADDR is present in the victim tlb, and has been copied
    back to the main tlb.  */
 static bool victim_tlb_hit(CPUArchState *env, size_t mmu_idx, size_t index,
-                           size_t elt_ofs, target_ulong page)
+                           size_t elt_ofs, target_ulong page, bool cap_write)
 {
     size_t vidx;
 
@@ -1062,6 +1099,14 @@ static bool victim_tlb_hit(CPUArchState *env, size_t mmu_idx, size_t index,
         cmp = *(target_ulong *)((uintptr_t)vtlb + elt_ofs);
 #else
         cmp = *(target_ulong *)((uintptr_t)vtlb + elt_ofs);
+#endif
+
+#ifdef TARGET_CHERI
+        if (cap_write && ((env_tlb(env)->d[mmu_idx].viotlb[vidx].tagmem_write &
+                           TLBENTRYCAP_INVALID_WRITE_MASK) ==
+                          TLBENTRYCAP_INVALID_WRITE_VALUE)) {
+            continue;
+        }
 #endif
 
         if (cmp == page) {
@@ -1084,7 +1129,7 @@ static bool victim_tlb_hit(CPUArchState *env, size_t mmu_idx, size_t index,
 /* Macro to call the above, with local variables from the use context.  */
 #define VICTIM_TLB_HIT(TY, ADDR) \
   victim_tlb_hit(env, mmu_idx, index, offsetof(CPUTLBEntry, TY), \
-                 (ADDR) & TARGET_PAGE_MASK)
+                 (ADDR) & TARGET_PAGE_MASK, false)
 
 /*
  * Return a ram_addr_t for the virtual address for execution.
@@ -1184,7 +1229,7 @@ void *probe_access(CPUArchState *env, target_ulong addr, int size,
 #endif
     uintptr_t index = tlb_index(env, mmu_idx, addr);
     CPUTLBEntry *entry = tlb_entry(env, mmu_idx, addr);
-    target_ulong tlb_addr;
+    target_ulong tlb_addr, page_addr;
     size_t elt_ofs = 0;
     int wp_access = 0;
 
@@ -1200,6 +1245,9 @@ void *probe_access(CPUArchState *env, target_ulong addr, int size,
         wp_access = BP_MEM_READ;
         break;
     case MMU_DATA_STORE:
+        // CAP_STORE still returns the write offset so the data store can be
+        // done with a single probe.
+    case MMU_DATA_CAP_STORE:
         elt_ofs = offsetof(CPUTLBEntry, addr_write);
         wp_access = BP_MEM_WRITE;
         break;
@@ -1212,9 +1260,22 @@ void *probe_access(CPUArchState *env, target_ulong addr, int size,
     }
     tlb_addr = tlb_read_ofs(entry, elt_ofs);
 
-    if (unlikely(!tlb_hit(env->uc, tlb_addr, addr))) {
-        if (!victim_tlb_hit(env, mmu_idx, index, elt_ofs,
-                            addr & TARGET_PAGE_MASK)) {
+    page_addr = addr & TARGET_PAGE_MASK;
+    bool tag_write_invalid = false;
+
+#ifdef TARGET_CHERI
+    if (access_type == MMU_DATA_CAP_STORE &&
+        ((env_tlb(env)
+              ->d[mmu_idx]
+              .iotlb[tlb_index(env, mmu_idx, addr)]
+              .tagmem_write &
+          TLBENTRYCAP_INVALID_WRITE_MASK) == TLBENTRYCAP_INVALID_WRITE_VALUE))
+        tag_write_invalid = true;
+#endif
+
+    if (!tlb_hit(env->uc, tlb_addr, addr) || tag_write_invalid) {
+        if (!victim_tlb_hit(env, mmu_idx, index, elt_ofs, page_addr,
+                            access_type == MMU_DATA_CAP_STORE)) {
             tlb_fill(env_cpu(env), addr, size, access_type, mmu_idx, retaddr);
             /* TLB resize via tlb_fill may have moved the entry. */
             index = tlb_index(env, mmu_idx, addr);
@@ -1255,7 +1316,7 @@ void *tlb_vaddr_to_host(CPUArchState *env, abi_ptr addr,
 {
     struct uc_struct *uc = env->uc;
     CPUTLBEntry *entry = tlb_entry(env, mmu_idx, addr);
-    target_ulong tlb_addr, page;
+    target_ulong tlb_addr, page_addr;
     size_t elt_ofs = 0;
 
     switch (access_type) {
@@ -1263,6 +1324,9 @@ void *tlb_vaddr_to_host(CPUArchState *env, abi_ptr addr,
         elt_ofs = offsetof(CPUTLBEntry, addr_read);
         break;
     case MMU_DATA_STORE:
+        // CAP_STORE still returns the write offset so the data store can be
+        // done with a single probe.
+    case MMU_DATA_CAP_STORE:
         elt_ofs = offsetof(CPUTLBEntry, addr_write);
         break;
     case MMU_INST_FETCH:
@@ -1271,14 +1335,25 @@ void *tlb_vaddr_to_host(CPUArchState *env, abi_ptr addr,
     default:
         g_assert_not_reached();
     }
-
-    page = addr & TARGET_PAGE_MASK;
     tlb_addr = tlb_read_ofs(entry, elt_ofs);
 
-    if (!tlb_hit_page(uc, tlb_addr, page)) {
-        uintptr_t index = tlb_index(env, mmu_idx, addr);
+    page_addr = addr & TARGET_PAGE_MASK;
+    bool tag_write_invalid = false;
 
-        if (!victim_tlb_hit(env, mmu_idx, index, elt_ofs, page)) {
+#ifdef TARGET_CHERI
+    if (access_type == MMU_DATA_CAP_STORE &&
+        ((env_tlb(env)
+              ->d[mmu_idx]
+              .iotlb[tlb_index(env, mmu_idx, addr)]
+              .tagmem_write &
+          TLBENTRYCAP_INVALID_WRITE_MASK) == TLBENTRYCAP_INVALID_WRITE_VALUE))
+        tag_write_invalid = true;
+#endif
+
+    if (!tlb_hit_page(uc, tlb_addr, page_addr) || tag_write_invalid) {
+        uintptr_t index = tlb_index(env, mmu_idx, addr);
+        if (!victim_tlb_hit(env, mmu_idx, index, elt_ofs, page_addr,
+                            access_type == MMU_DATA_CAP_STORE)) {
             CPUState *cs = env_cpu(env);
             CPUClass *cc = CPU_GET_CLASS(cs);
 
@@ -1586,7 +1661,7 @@ load_helper(CPUArchState *env, target_ulong addr, TCGMemOpIdx oi,
     /* If the TLB entry is for a different page, reload and try again.  */
     if (!tlb_hit(env->uc, tlb_addr, addr)) {
         if (!victim_tlb_hit(env, mmu_idx, index, tlb_off,
-                            addr & TARGET_PAGE_MASK)) {
+                            addr & TARGET_PAGE_MASK, false)) {
             tlb_fill(env_cpu(env), addr, size,
                      access_type, mmu_idx, retaddr);
             index = tlb_index(env, mmu_idx, addr);
@@ -2104,7 +2179,7 @@ store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
     /* If the TLB entry is for a different page, reload and try again.  */
     if (!tlb_hit(env->uc, tlb_addr, addr)) {
         if (!victim_tlb_hit(env, mmu_idx, index, tlb_off,
-            addr & TARGET_PAGE_MASK)) {
+            addr & TARGET_PAGE_MASK, false)) {
             tlb_fill(env_cpu(env), addr, size, MMU_DATA_STORE,
                      mmu_idx, retaddr);
             index = tlb_index(env, mmu_idx, addr);
@@ -2189,7 +2264,7 @@ store_helper(CPUArchState *env, target_ulong addr, uint64_t val,
         entry2 = tlb_entry(env, mmu_idx, page2);
         tlb_addr2 = tlb_addr_write(entry2);
         if (!tlb_hit_page(uc, tlb_addr2, page2)) {
-            if (!victim_tlb_hit(env, mmu_idx, index2, tlb_off, page2)) {
+            if (!victim_tlb_hit(env, mmu_idx, index2, tlb_off, page2, false)) {
                 tlb_fill(env_cpu(env), page2, size2, MMU_DATA_STORE,
                          mmu_idx, retaddr);
                 index2 = tlb_index(env, mmu_idx, page2);

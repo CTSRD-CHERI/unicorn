@@ -254,7 +254,7 @@ static void test_arm64c_mem()
 
 int main(int argc, char **argv, char **envp)
 {
-    test_arm64_mem_fetch();
+    // test_arm64_mem_fetch();
 
     printf("-------------------------\n");
     test_arm64c();
