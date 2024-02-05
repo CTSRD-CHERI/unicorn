@@ -11,9 +11,11 @@
 #include "uc_priv.h"
 #include "unicorn.h"
 
-// #include "cheri_compressed_cap_common.h"  // the macro is undefined at the end of the file!
-
 #ifdef TARGET_CHERI
+
+// #include "cheri_compressed_cap_common.h"
+// the macro is undefined at the end of the file!
+// so we define it here again
 
 #define CC_FORMAT_LOWER 128m
 #define CC_FORMAT_UPPER 128M
@@ -161,7 +163,7 @@ static uc_err read_cap_reg(CPUARMState *env, unsigned int regid, uc_cheri_cap *c
     cap->tag = capreg->cr_tag;
     cap->uperms = cap_get_uperms(capreg);
     cap->perms = cap_get_perms(capreg);
-    cap->type = cap_get_otype_unsigned(capreg);
+    cap->otype = cap_get_otype_unsigned(capreg);
 
     return UC_ERR_OK;
 }
@@ -174,9 +176,9 @@ static uc_err write_cap_reg(CPUARMState *env, unsigned int regid, uc_cheri_cap *
     capreg.cr_base = cap->base;
     capreg._cr_top = cap->top;
     capreg.cr_tag = cap->tag;
-    // encode permissions and otype FIXME
+    // XXXR3: todo, encode permissions and otype
     capreg.cr_pesbt = _CC_ENCODE_FIELD(_CC_N(UPERMS_ALL), UPERMS) | _CC_ENCODE_FIELD(_CC_N(PERMS_ALL), HWPERMS) |
-                    _CC_ENCODE_FIELD(_CC_N(OTYPE_UNSEALED), OTYPE);
+                      _CC_ENCODE_FIELD(_CC_N(OTYPE_UNSEALED), OTYPE);
     
     // compress
     bool exact = false;
@@ -192,14 +194,6 @@ static uc_err write_cap_reg(CPUARMState *env, unsigned int regid, uc_cheri_cap *
     capreg.cr_extra = CREG_FULLY_DECOMPRESSED;
 
     update_capreg(env, regid, &capreg);
-
-    // printf("tag: %x\n,", capreg.cr_tag);
-    // printf("bounds_valid: %d\n,", capreg.cr_bounds_valid);
-    // printf cap_get_length()
-
-    // cap_register_t capreg = CAP_cc(make_max_perms_cap)(0, cap->address, CAP_MAX_TOP);
-    // capreg.cr_extra = CREG_FULLY_DECOMPRESSED;
-    // update_capreg(env, regid, &capreg);
 
     // XXXR3: todo, warn when the bounds are not exact
     return UC_ERR_OK;
@@ -281,7 +275,7 @@ static uc_err reg_read(CPUARMState *env, unsigned int regid, void *value)
             ((uc_cheri_cap *)value)->tag = pcc->cr_tag;
             ((uc_cheri_cap *)value)->uperms = cap_get_uperms(pcc);
             ((uc_cheri_cap *)value)->perms = cap_get_perms(pcc);
-            ((uc_cheri_cap *)value)->type = cap_get_otype_unsigned(pcc);
+            ((uc_cheri_cap *)value)->otype = cap_get_otype_unsigned(pcc);
 #else
             *(uint64_t *)value = get_aarch_reg_as_x(&env->pc);
 #endif
