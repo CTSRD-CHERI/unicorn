@@ -2,3 +2,5 @@
 - Write simple tests
 - Write bindings
 - Write bindings tests
+- APIs for decoding permissions and object types
+- Coprocessor registers
