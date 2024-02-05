@@ -50,11 +50,11 @@ static inline bool in_pcc_bounds(DisasContextBase *db, target_ulong addr)
 }
 
 // Raise a bounds violation exception on PCC
-static inline void gen_raise_pcc_violation_tcgv(DisasContextBase *db,
+static inline void gen_raise_pcc_violation_tcgv(TCGContext *tcg_ctx, DisasContextBase *db,
                                                 TCGv taddr, uint32_t num_bytes)
 {
-    DisasContext *dc = container_of(db, DisasContext, base);
-    TCGContext *tcg_ctx = dc->uc->tcg_ctx;
+    // DisasContext *dc = container_of(db, DisasContext, base);
+    // TCGContext *tcg_ctx = dc->uc->tcg_ctx;
     // Ensure correct PCC.cursor
     cheri_tcg_save_pc(db);
     TCGv_i32 tbytes = tcg_const_i32(tcg_ctx, num_bytes);
@@ -64,16 +64,16 @@ static inline void gen_raise_pcc_violation_tcgv(DisasContextBase *db,
     // this helper function might only be called in a conditional branch
 }
 
-static inline void gen_raise_pcc_violation(DisasContextBase *db,
+static inline void gen_raise_pcc_violation(TCGContext *tcg_ctx, DisasContextBase *db,
                                            target_ulong addr,
                                            uint32_t num_bytes)
 {
-    DisasContext *dc = container_of(db, DisasContext, base);
-    TCGContext *tcg_ctx = dc->uc->tcg_ctx;
+    // DisasContext *dc = container_of(db, DisasContext, base);
+    // TCGContext *tcg_ctx = dc->uc->tcg_ctx;
     tcg_debug_assert(!in_pcc_bounds(db, addr + num_bytes) ||
                      !in_pcc_bounds(db, addr));
     TCGv taddr = tcg_const_tl(tcg_ctx, addr);
-    gen_raise_pcc_violation_tcgv(db, taddr, num_bytes);
+    gen_raise_pcc_violation_tcgv(tcg_ctx, db, taddr, num_bytes);
     tcg_temp_free(tcg_ctx, taddr);
 }
 

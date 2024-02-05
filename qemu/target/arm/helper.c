@@ -9059,8 +9059,6 @@ static void arm_cpu_do_interrupt_aarch32_qemu(CPUState *cs)
     take_aarch32_exception(env, new_mode, mask, offset, addr);
 }
 
-// XXXR3: here...
-
 static int aarch64_regnum(CPUARMState *env, int aarch32_reg)
 {
     /*

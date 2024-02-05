@@ -272,7 +272,7 @@ static uc_err reg_read(CPUARMState *env, unsigned int regid, void *value)
         case UC_ARM64_REG_X30:
             *(int64_t *)value = arm_get_xreg(env, 30);
             break;
-        case UC_ARM64_REG_PC:
+        case UC_ARM64_REG_PC: {
 #ifdef TARGET_CHERI
             cap_register_t *pcc = _cheri_get_pcc_unchecked(env);
             ((uc_cheri_cap *)value)->address = pcc->_cr_cursor;
@@ -286,6 +286,7 @@ static uc_err reg_read(CPUARMState *env, unsigned int regid, void *value)
             *(uint64_t *)value = get_aarch_reg_as_x(&env->pc);
 #endif
             break;
+        }
         case UC_ARM64_REG_SP:
             *(int64_t *)value = arm_get_xreg(env, 31);
             break;
@@ -389,13 +390,15 @@ static uc_err reg_write(CPUARMState *env, unsigned int regid, const void *value)
         case UC_ARM64_REG_X30:
             arm_set_xreg(env, 30, *(uint64_t *)value);
             break;
-        case UC_ARM64_REG_PC:
+        case UC_ARM64_REG_PC: {
 #ifdef TARGET_CHERI
+            // write_cap_reg(env, CHERI_EXC_REGNUM_PCC, (uc_cheri_cap *)value);
             set_max_perms_capability(&env->pc.cap, *(uint64_t *)value);
 #else
             set_aarch_reg_value(&env->pc, *(uint64_t *)value);
 #endif
             break;
+        }
         case UC_ARM64_REG_SP:
             arm_set_xreg(env, 31, *(uint64_t *)value);
             break;

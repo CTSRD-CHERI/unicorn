@@ -516,7 +516,7 @@ static inline void gen_check_pcc_bounds_next_inst(DisasContext *ctx,
     tcg_debug_assert(ctx->base.pc_next >= ctx->base.pc_first);
     if (unlikely(ctx->base.pc_next + num_bytes > ctx->base.pcc_top)) {
         cheri_tcg_prepare_for_unconditional_exception(&ctx->base);
-        gen_raise_pcc_violation(&ctx->base, ctx->base.pc_next, num_bytes);
+        gen_raise_pcc_violation(tcg_ctx, &ctx->base, ctx->base.pc_next, num_bytes);
     }
 #endif
 }
@@ -527,7 +527,7 @@ static inline void gen_check_branch_target(DisasContext *ctx, target_ulong addr)
 #ifdef TARGET_CHERI
     if (unlikely(!in_pcc_bounds(&ctx->base, addr))) {
         cheri_tcg_prepare_for_unconditional_exception(&ctx->base);
-        gen_raise_pcc_violation(&ctx->base, addr, 1);
+        gen_raise_pcc_violation(tcg_ctx, &ctx->base, addr, 1);
     }
 #endif
 }
@@ -575,7 +575,7 @@ static inline void gen_check_branch_target_dynamic(DisasContext *ctx, TCGv addr)
     tcg_gen_br(tcg_ctx, skip_btarget_check); // No violation -> return
     // One of the branches taken -> raise a bounds violation exception
     gen_set_label(tcg_ctx, bounds_violation); // skip helper call
-    gen_raise_pcc_violation_tcgv(&ctx->base, addr, 0);
+    gen_raise_pcc_violation_tcgv(tcg_ctx, &ctx->base, addr, 0);
     gen_set_label(tcg_ctx, skip_btarget_check); // skip helper call
 #endif
 }
@@ -595,7 +595,7 @@ static inline void gen_check_cond_branch_target(DisasContext *ctx,
     // skip the bounds violation if bcond == 0 (i.e. branch not taken)
     tcg_gen_brcondi_tl(tcg_ctx, TCG_COND_EQ, branchcond, 0, skip_btarget_check);
     // Brach taken -> raise a bounds violation exception
-    gen_raise_pcc_violation(&ctx->base, addr, 0);
+    gen_raise_pcc_violation(tcg_ctx, &ctx->base, addr, 0);
     gen_set_label(tcg_ctx, skip_btarget_check); // skip helper call
 #endif
 }

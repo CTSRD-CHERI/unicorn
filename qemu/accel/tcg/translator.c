@@ -15,6 +15,10 @@
 #include "exec/gen-icount.h"
 #include "exec/translator.h"
 
+#ifdef TARGET_CHERI
+#include "cheri-translate-utils-base.h"
+#endif
+
 #include <uc_priv.h>
 
 /* Pairs with tcg_clear_temp_count.
@@ -49,6 +53,17 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
     db->num_insns = 0;
     db->max_insns = max_insns;
     db->singlestep_enabled = cpu->singlestep_enabled;
+#ifdef TARGET_CHERI
+    db->pcc_base = tb->cs_base;
+    db->pcc_top = tb->cs_top;
+    cheri_debug_assert(db->pcc_base ==
+                       cap_get_base(cheri_get_recent_pcc(cpu->env_ptr)));
+    cheri_debug_assert(db->pcc_top ==
+                       cap_get_top(cheri_get_recent_pcc(cpu->env_ptr)));
+    db->cheri_flags = tb->cheri_flags;
+    disas_capreg_reset_all(db);
+    // TODO: verify cheri_flags are correct?
+#endif
 
     ops->init_disas_context(db, cpu);
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
@@ -87,6 +102,18 @@ void translator_loop(const TranslatorOps *ops, DisasContextBase *db,
 
     ops->tb_start(db, cpu);
     // tcg_dump_ops(tcg_ctx, false, "tb start 2");
+
+#ifdef TARGET_CHERI
+    // Check PCC permissions and tag once on TB entry.
+    // Each target must reserve one bit in tb->flags as the "PCC valid" flag.
+
+    if (unlikely((tb->cheri_flags & TB_FLAG_CHERI_PCC_EXECUTABLE) !=
+                 TB_FLAG_CHERI_PCC_EXECUTABLE)) {
+        gen_helper_raise_exception_pcc_perms(tcg_ctx, tcg_ctx->cpu_env);
+    } else if (unlikely(!in_pcc_bounds(db, db->pc_next))) {
+        gen_raise_pcc_violation(tcg_ctx, db, db->pc_next, 0);
+    }
+#endif
 
     tcg_debug_assert(db->is_jmp == DISAS_NEXT);  /* no early exit */
 
