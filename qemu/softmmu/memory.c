@@ -53,7 +53,7 @@ MemoryRegion *memory_map(struct uc_struct *uc, hwaddr begin, size_t size, uint32
         return NULL;
     }
 #ifdef TARGET_CHERI
-    cheri_tag_init(ram, size);
+    cheri_tag_init(ram, memory_region_size(ram));
 #endif
     memory_region_add_subregion(uc->system_memory, begin, ram);
 
@@ -76,7 +76,7 @@ MemoryRegion *memory_map_ptr(struct uc_struct *uc, hwaddr begin, size_t size, ui
         return NULL;
     }
 #ifdef TARGET_CHERI
-    cheri_tag_init(ram, size);
+    cheri_tag_init(ram, memory_region_size(ram));
 #endif
     memory_region_add_subregion(uc->system_memory, begin, ram);
 

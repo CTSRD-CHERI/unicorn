@@ -76,6 +76,73 @@ static void print_capability(uc_cheri_cap *cap)
     printf("}\n");
 }
 
+static void test_arm64c_mem_fetch(void)
+{
+    uc_engine *uc;
+    uc_err err;
+    uint64_t x1, x0;
+    uc_cheri_cap csp;
+    // msr x0, CurrentEL
+    unsigned char shellcode0[4] = {64, 66, 56, 213};
+    // .text:00000000004002C0                 LDR             X1, [SP,#arg_0]
+    unsigned char shellcode[4] = {0xE1, 0x03, 0x40, 0xF9};
+    unsigned shellcode_address = 0x4002C0;
+    uint64_t data_address = 0x10000000000000;
+
+    printf(">>> Emulate ARM64 C64 fetching stack data from high address %" PRIx64
+           "\n",
+           data_address);
+
+    // Initialize emulator in ARM mode
+    err = uc_open(UC_ARCH_ARM64, UC_MODE_ARM | UC_MODE_C64, &uc);
+    if (err) {
+        printf("Failed on uc_open() with error returned: %u (%s)\n", err,
+               uc_strerror(err));
+        return;
+    }
+    uc_mem_map(uc, data_address, 0x30000, UC_PROT_ALL);
+    uc_mem_map(uc, 0x400000, 0x1000, UC_PROT_ALL);
+    printf("B\n");
+    csp.address = data_address;
+    csp.base = data_address;
+    csp.top = data_address + 0x100;
+    csp.tag = 1;
+    csp.uperms = 0; // ignored for now, default FULL
+    csp.perms = 0; // ignored for now, default FULL
+    csp.otype = 0; // ignored for now, default unsealed
+    uc_reg_write(uc, UC_ARM64_REG_CSP, &csp);
+    printf("C\n");
+    uc_mem_write(uc, data_address, "\xc8\xc8\xc8\xc8\xc8\xc8\xc8\xc8", 8);
+    uc_mem_write(uc, shellcode_address, shellcode0, 4);
+    uc_mem_write(uc, shellcode_address + 4, shellcode, 4);
+
+    err = uc_emu_start(uc, shellcode_address, shellcode_address + 4, 0, 0);
+    if (err) {
+        printf("Failed on uc_emu_start() with error returned: %u\n", err);
+    }
+
+    x0 = 0;
+    uc_reg_read(uc, UC_ARM64_REG_X0, &x0);
+    printf(">>> x0(Exception Level)=%" PRIx64 "\n", x0 >> 2);
+
+    err = uc_emu_start(uc, shellcode_address + 4, shellcode_address + 8, 0, 0);
+    if (err) {
+        printf("Failed on uc_emu_start() with error returned: %u\n", err);
+    }
+
+    uc_reg_read(uc, UC_ARM64_REG_X1, &x1);
+
+    printf(">>> X1 = 0x%" PRIx64 "\n", x1);
+
+    uc_close(uc);
+}
+
+// XXXR3: todo, implement uc_mem_write_cap
+// static void test_arm64c_mem_fetch_cap(void)
+// {
+//     
+// }
+
 static void test_arm64c(void)
 {
     uc_engine *uc;
@@ -341,7 +408,7 @@ static void test_arm64c_mem_cap()
 
 int main(int argc, char **argv, char **envp)
 {
-    // test_arm64_mem_fetch();
+    test_arm64c_mem_fetch();
 
     printf("-------------------------\n");
     test_arm64c();

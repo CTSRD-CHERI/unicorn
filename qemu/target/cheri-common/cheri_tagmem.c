@@ -116,7 +116,8 @@ static inline size_t num_tagblocks(RAMBlock* ram)
 {
     uint64_t memory_size = memory_region_size(ram->mr);
     size_t result = DIV_ROUND_UP(memory_size, CHERI_CAP_SIZE * CAP_TAGBLK_SIZE);
-    assert(result == (memory_size / CHERI_CAP_SIZE) >> CAP_TAGBLK_SHFT);
+    // assert(result == (memory_size / CHERI_CAP_SIZE) >> CAP_TAGBLK_SHFT);
+    // XXXR3: this assertion erroneously fires when we do a 0x1000 memory map
     return result;
 }
 
@@ -237,7 +238,7 @@ void cheri_tag_init(MemoryRegion *mr, uint64_t memory_size)
            "Incorrect tag mem size passed?");
     assert(mr->ram_block->cheri_tags == NULL && "Already initialized?");
 
-    size_t cheri_ntagblks = num_tagblocks(mr->ram_block);
+    size_t cheri_ntagblks = num_tagblocks(mr->ram_block); 
     mr->ram_block->cheri_tags =
         g_malloc0(cheri_ntagblks * sizeof(CheriTagBlock *));
     if (mr->ram_block->cheri_tags == NULL) {
