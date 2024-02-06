@@ -27,21 +27,22 @@
 #define ARM64C_ADD_CODE "\x00\x04\x00\x11"
 
 // capability arithmetic
-// add c0, csp, #0x2c
-#define ARM64C_ADD_CAP_CODE "\xe0\xb3\x00\x02"
+// add c0, c1, #0x2
+#define ARM64C_ADD_CAP_CODE "\x20\x08\x00\x02"
 
 // load store integers
 // str        w11, [c13], #0
 // ldrb       w15, [c13], #0
 #define ARM64C_MEM_CODE "\xab\x05\x00\xb8\xaf\x05\x40\x38"
 
-// XXXR3: todo, load store capabilities
+// load store capabilities
+// str c0, [csp, #0x10]
+// ldr c1, [csp, #0x10]
+#define ARM64C_MEM_CAP_CODE "\xe0\x07\x00\xc2\xe1\x07\x40\xc2"
 
 // mrs        x2, tpidrro_el0
 #define ARM64C_MRS_CODE "\x62\xd0\x3b\xd5"
 
-// XXXR3: todo, instructions involving CSP
-// #define ARM64C_CSP_CODE ""
 
 // memory address where emulation starts
 #define ADDRESS 0x10000
@@ -130,55 +131,60 @@ static void test_arm64c(void)
     uc_close(uc);
 }
 
-// static void test_arm64c_cap(void)
-// {
-//     uc_engine *uc;
-//     uc_err err;
-//     uc_hook trace1, trace2;
+static void test_arm64c_cap(void)
+{
+    uc_engine *uc;
+    uc_err err;
 
-//     int64_t x0 = 0x1;
+    uc_cheri_cap c0;
+    uc_cheri_cap c1;
 
-//     printf("Emulate ARM64 C64 code (arithmetic operation)\n");
+    memset(&c0, 0, sizeof(c0));
+    c1.address = ADDRESS;
+    c1.base = ADDRESS;
+    c1.top = ADDRESS + 0x100;
+    c1.tag = 1;
+    c1.uperms = 0; // ignored for now, default FULL
+    c1.perms = 0; // ignored for now, default FULL
+    c1.otype = 0; // ignored for now, default unsealed
 
-//     // Initialize emulator in ARM C64 mode
-//     err = uc_open(UC_ARCH_ARM64, UC_MODE_C64 | UC_MODE_ARM, &uc);
-//     if (err) {
-//         printf("Failed on uc_open() with error returned: %u (%s)\n", err,
-//                uc_strerror(err));
-//         return;
-//     }
+    printf("Emulate ARM64 C64 code (capability arithmetic operation)\n");
 
-//     // map 2MB memory for this emulation
-//     uc_mem_map(uc, ADDRESS, 2 * 1024 * 1024, UC_PROT_ALL);
+    // Initialize emulator in ARM C64 mode
+    err = uc_open(UC_ARCH_ARM64, UC_MODE_C64 | UC_MODE_ARM, &uc);
+    if (err) {
+        printf("Failed on uc_open() with error returned: %u (%s)\n", err,
+               uc_strerror(err));
+        return;
+    }
 
-//     // write machine code to be emulated to memory
-//     uc_mem_write(uc, ADDRESS, ARM64C_CODE, sizeof(ARM64C_CODE) - 1);
+    // map 2MB memory for this emulation
+    uc_mem_map(uc, ADDRESS, 2 * 1024 * 1024, UC_PROT_ALL);
 
-//     // initialize machine registers
-//     uc_reg_write(uc, UC_ARM64_REG_X0, &x0);
+    // write machine code to be emulated to memory
+    uc_mem_write(uc, ADDRESS, ARM64C_ADD_CAP_CODE, sizeof(ARM64C_ADD_CAP_CODE) - 1);
 
-//     // tracing all basic blocks with customized callback
-//     uc_hook_add(uc, &trace1, UC_HOOK_BLOCK, hook_block, NULL, 1, 0);
+    // initialize machine registers
+    uc_reg_write(uc, UC_ARM64_REG_C0, &c0);
+    uc_reg_write(uc, UC_ARM64_REG_C1, &c1);
 
-//     // tracing one instruction at ADDRESS with customized callback
-//     uc_hook_add(uc, &trace2, UC_HOOK_CODE, hook_code, NULL, ADDRESS, ADDRESS);
+    // emulate machine code in infinite time (last param = 0), or when
+    // finishing all the code.
+    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_ADD_CAP_CODE) - 1, 0, 0);
+    if (err) {
+        printf("Failed on uc_emu_start() with error returned: %u\n", err);
+    }
 
-//     // emulate machine code in infinite time (last param = 0), or when
-//     // finishing all the code.
-//     err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_CODE) - 1, 0, 0);
-//     if (err) {
-//         printf("Failed on uc_emu_start() with error returned: %u\n", err);
-//     }
+    // now print out some registers
+    printf(">>> Emulation done. Below is the CPU context\n");
+    printf(">>> As little endian, C0 address should be 0x%x:\n", ADDRESS + 2);
 
-//     // now print out some registers
-//     printf(">>> Emulation done. Below is the CPU context\n");
-//     printf(">>> As little endian, X0 should be 0x2:\n");
+    uc_reg_read(uc, UC_ARM64_REG_C0, &c0);
+    printf(">>> C0 = ");
+    print_capability(&c0);
 
-//     uc_reg_read(uc, UC_ARM64_REG_X0, &x0);
-//     printf(">>> X0 = 0x%" PRIx64 "\n", x0);
-
-//     uc_close(uc);
-// }
+    uc_close(uc);
+}
 
 static void test_arm64c_mem()
 {
@@ -225,11 +231,6 @@ static void test_arm64c_mem()
     // tracing one instruction at ADDRESS with customized callback
     uc_hook_add(uc, &trace2, UC_HOOK_CODE, hook_code, NULL, ADDRESS, ADDRESS);
 
-    // DEBUG
-    uc_reg_read(uc, UC_ARM64_REG_C13, &c13);
-    printf(">>> C13 (at the start of emulation): ");
-    print_capability(&c13);
-
     // emulate machine code in infinite time (last param = 0), or when
     // finishing all the code.
     err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_MEM_CODE) - 1, 0, 0);
@@ -252,6 +253,92 @@ static void test_arm64c_mem()
     uc_close(uc);
 }
 
+static void test_arm64c_mem_cap()
+{
+    uc_engine *uc;
+    uc_err err;
+    uc_hook trace1, trace2;
+
+    uc_cheri_cap c0, c1, csp;
+
+    c0.address = ADDRESS + 0x33;
+    c0.base = ADDRESS;
+    c0.top = ADDRESS + 0x100;
+    c0.tag = 1;
+    c0.uperms = 0; // ignored for now, default FULL
+    c0.perms = 0; // ignored for now, default FULL
+    c0.otype = 0; // ignored for now, default unsealed
+
+    memset(&c1, 0, sizeof(c1));
+
+    csp.address = ADDRESS + 0x50; // 0x10 aligned
+    csp.base = ADDRESS;
+    csp.top = ADDRESS + 0x100;
+    csp.tag = 1;
+    csp.uperms = 0; // ignored for now, default FULL
+    csp.perms = 0; // ignored for now, default FULL
+    csp.otype = 0; // ignored for now, default unsealed
+
+    printf("Emulate ARM64 C64 code (memory load and store caps)\n");
+
+    // Initialize emulator in ARM C64 mode
+    err = uc_open(UC_ARCH_ARM64, UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
+    if (err) {
+        printf("Failed on uc_open() with error returned: %u (%s)\n", err,
+               uc_strerror(err));
+        return;
+    }
+
+    // map 2MB memory for this emulation
+    uc_mem_map(uc, ADDRESS, 2 * 1024 * 1024, UC_PROT_ALL);
+
+    // write machine code to be emulated to memory
+    uc_mem_write(uc, ADDRESS, ARM64C_MEM_CAP_CODE, sizeof(ARM64C_MEM_CAP_CODE) - 1);
+
+    // initialize machine registers
+    uc_reg_write(uc, UC_ARM64_REG_C0, &c0);
+    uc_reg_write(uc, UC_ARM64_REG_C1, &c1);
+    uc_reg_write(uc, UC_ARM64_REG_CSP, &csp);
+
+    // tracing all basic blocks with customized callback
+    uc_hook_add(uc, &trace1, UC_HOOK_BLOCK, hook_block, NULL, 1, 0);
+
+    // tracing one instruction at ADDRESS with customized callback
+    uc_hook_add(uc, &trace2, UC_HOOK_CODE, hook_code, NULL, ADDRESS, ADDRESS);
+
+    uc_reg_read(uc, UC_ARM64_REG_C0, &c0);
+    uc_reg_read(uc, UC_ARM64_REG_C1, &c1);
+    uc_reg_read(uc, UC_ARM64_REG_CSP, &csp);
+    printf("At the start of the emulation, the registers are: \n");
+    printf(">>> C0 = ");
+    print_capability(&c0);
+    printf(">>> C1 = ");
+    print_capability(&c1);
+    printf(">>> CSP = ");
+    print_capability(&csp);
+
+    // emulate machine code in infinite time (last param = 0), or when
+    // finishing all the code.
+    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_MEM_CAP_CODE) - 1, 0, 0);
+    if (err) {
+        printf("Failed on uc_emu_start() with error returned: %u\n", err);
+    }
+
+    // now print out some registers
+    printf(">>> Emulation done. Below is the CPU context\n");
+    uc_reg_read(uc, UC_ARM64_REG_C0, &c0);
+    uc_reg_read(uc, UC_ARM64_REG_C1, &c1);
+    uc_reg_read(uc, UC_ARM64_REG_CSP, &csp);
+    printf(">>> C0 = ");
+    print_capability(&c0);
+    printf(">>> C1 = ");
+    print_capability(&c1);
+    printf(">>> CSP = ");
+    print_capability(&csp);
+
+    uc_close(uc);
+}
+
 int main(int argc, char **argv, char **envp)
 {
     // test_arm64_mem_fetch();
@@ -259,11 +346,14 @@ int main(int argc, char **argv, char **envp)
     printf("-------------------------\n");
     test_arm64c();
 
-    // printf("-------------------------\n");
-    // test_arm64c_cap();
+    printf("-------------------------\n");
+    test_arm64c_cap();
 
     printf("-------------------------\n");
     test_arm64c_mem();
+
+    printf("-------------------------\n");
+    test_arm64c_mem_cap();
 
     return 0;
 }
