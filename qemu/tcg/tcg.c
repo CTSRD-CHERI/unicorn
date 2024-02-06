@@ -3719,6 +3719,16 @@ int64_t tcg_cpu_exec_time(void)
     exit(EXIT_FAILURE);
 }
 
+static void sync_global(TCGContext *s, TCGOp *op)
+{
+    TCGTemp *ts = arg_temp(op->args[0]);
+    // tcg_debug_assert(ts->kind >= TEMP_GLOBAL);
+    // tcg_debug_assert(ts->val_type == TEMP_VAL_REG ||
+    //                  ts->val_type == TEMP_VAL_MEM);
+    // // Liveness analysis should make sure that the sync happened at the last
+    // // write
+    // tcg_debug_assert((ts->val_type != TEMP_VAL_REG) || (ts->mem_coherent));
+}
 
 int tcg_gen_code(TCGContext *s, TranslationBlock *tb)
 {
@@ -3817,6 +3827,9 @@ int tcg_gen_code(TCGContext *s, TranslationBlock *tb)
             break;
         case INDEX_op_discard:
             temp_dead(s, arg_temp(op->args[0]));
+            break;
+        case INDEX_op_sync:
+            sync_global(s, op);
             break;
         case INDEX_op_set_label:
             tcg_reg_alloc_bb_end(s, s->reserved_regs);
