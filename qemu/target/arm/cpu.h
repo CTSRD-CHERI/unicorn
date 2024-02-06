@@ -4231,20 +4231,20 @@ static inline uint32_t arm_rebuild_chflags_el(CPUARMState *env, int el)
     env->chflags = chflags;
 
     // if (FIELD_EX32(chflags_changed, TBFLAG_CHERI, PSTATE_C64)) {
-    //     qemu_maybe_log_instr_extra(env, "New C64 state: %s\n",
+    //     printf("New C64 state: %s\n",
     //                                FIELD_EX32(chflags, TBFLAG_CHERI, PSTATE_C64)
     //                                    ? "Enabled"
     //                                    : "Disabled");
     // }
     // if (FIELD_EX32(chflags_changed, TBFLAG_CHERI, EXECUTIVE)) {
-    //     qemu_maybe_log_instr_extra(env, "New executive state: %s\n",
+    //     printf("New executive state: %s\n",
     //                                FIELD_EX32(chflags, TBFLAG_CHERI, EXECUTIVE)
     //                                    ? "Enabled"
     //                                    : "Disabled");
     // }
     // if (FIELD_EX32(chflags_changed, TBFLAG_CHERI, CAP_ENABLED)) {
-    //     qemu_maybe_log_instr_extra(
-    //         env, "New cap enabled state: %s\n",
+    //     printf(
+    //         "New cap enabled state: %s\n",
     //         FIELD_EX32(chflags, TBFLAG_CHERI, CAP_ENABLED) ? "Enabled"
     //                                                        : "Disabled");
     // }

@@ -113,7 +113,7 @@ static int tcg_cpu_exec(struct uc_struct *uc)
 
             // save invalid memory access error & quit
             if (uc->invalid_error) {
-                // printf(">>> invalid memory accessed, STOP = %u!!!\n", env->invalid_error);
+                // printf(">>> invalid memory accessed, STOP = %u!!!\n", uc->invalid_error);
                 finish = true;
                 break;
             }

@@ -103,7 +103,7 @@ static void aarch64_morello_initfn(struct uc_struct *uc, CPUState *obj)
     set_feature(&cpu->env, ARM_FEATURE_AARCH64);
     set_feature(&cpu->env, ARM_FEATURE_CBAR_RO);
     set_feature(&cpu->env, ARM_FEATURE_EL2);
-    set_feature(&cpu->env, ARM_FEATURE_EL3);
+    set_feature(&cpu->env, ARM_FEATURE_EL3); // XXXR3: CheriBSD disables EL3
     set_feature(&cpu->env, ARM_FEATURE_PMU);
     cpu->midr = 0x410fd083;
     cpu->revidr = 0x00000000;
@@ -527,6 +527,9 @@ ARMCPU *cpu_aarch64_init(struct uc_struct *uc)
     
     if (uc->mode & UC_MODE_C64) {
         env->pstate |= PSTATE_C64;
+        // XXXR3: to set CAP_ENABLED
+        env->cp15.cpacr_el1 |= CPTR_CEN_LO;
+        env->cp15.cptr_el[3] |= CPTR_EC;
     }
 
     arm_rebuild_hflags(env);

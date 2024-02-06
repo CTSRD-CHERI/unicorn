@@ -1299,8 +1299,9 @@ static inline int get_cap_enabled_target_exception_level_el(CPUArchState *env,
         }
 
         if (el2_insecure && (env->cp15.hcr_el2 & HCR_TGE) &&
-            (env->cp15.hcr_el2 & HCR_E2H))
+            (env->cp15.hcr_el2 & HCR_E2H)) {
             disabled = false;
+        }
 
         if (disabled) {
             if (el2 && (env->cp15.hcr_el2 & HCR_TGE))
