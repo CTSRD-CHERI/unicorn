@@ -1,6 +1,7 @@
-- Write samples of: arithmetic instructions, load/store instructions, CSP load/store instructions
-- Write simple tests
 - Write bindings
+- Write simple unit tests
 - Write bindings tests
 - APIs for decoding permissions and object types
+- Implement uc_mem_write_cap
 - Coprocessor registers
+- Add tests for hooking CHERI exceptions
