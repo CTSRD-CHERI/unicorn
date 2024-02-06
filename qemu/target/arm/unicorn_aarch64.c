@@ -153,17 +153,49 @@ static uc_err write_cp_reg(CPUARMState *env, uc_arm64_cp_reg *cp)
 
 #ifdef TARGET_CHERI
 
+static uc_err parse_cap_reg(cap_register_t *src, uc_cheri_cap *dst)
+{
+    dst->address = src->_cr_cursor;
+    dst->base = src->cr_base;
+    dst->top = src->_cr_top;
+    dst->tag = src->cr_tag;
+    dst->uperms = cap_get_uperms(src);
+    dst->perms = cap_get_perms(src);
+    dst->otype = cap_get_otype_unsigned(src);
+
+    return UC_ERR_OK;
+}
+
 static uc_err read_cap_reg(CPUARMState *env, unsigned int regid, uc_cheri_cap *cap)
 {
     cap_register_t *capreg = get_readonly_capreg(env, regid);
+    return parse_cap_reg(capreg, cap);
+}
 
-    cap->address = capreg->_cr_cursor;
-    cap->base = capreg->cr_base;
-    cap->top = capreg->_cr_top;
-    cap->tag = capreg->cr_tag;
-    cap->uperms = cap_get_uperms(capreg);
-    cap->perms = cap_get_perms(capreg);
-    cap->otype = cap_get_otype_unsigned(capreg);
+static uc_err craft_cap_reg(cap_register_t *target, uc_cheri_cap *val)
+{
+    target->_cr_cursor = val->address;
+    target->cr_base = val->base;
+    target->_cr_top = val->top;
+    target->cr_tag = val->tag;
+    // XXXR3: todo, encode permissions and otype
+    target->cr_pesbt = _CC_ENCODE_FIELD(_CC_N(UPERMS_ALL), UPERMS) | _CC_ENCODE_FIELD(_CC_N(PERMS_ALL), HWPERMS) |
+                       _CC_ENCODE_FIELD(_CC_N(OTYPE_UNSEALED), OTYPE);
+
+    // compress
+    bool exact = false;
+    target->cr_exp = CC128M_RESET_EXP;
+    uint32_t new_ebt = cc128m_compute_ebt(val->base, val->top, NULL, &exact);
+    uint64_t new_base;
+    __uint128_t new_top;
+    bool new_bounds_valid = cc128m_compute_base_top(cc128m_extract_bounds_bits(_CC_ENCODE_FIELD(new_ebt, EBT)),
+                                                    target->_cr_cursor, &new_base, &new_top);
+    // see setbounds_impl
+    cc128m_update_ebt(target, new_ebt);
+    target->cr_bounds_valid = new_bounds_valid;
+    target->cr_extra = CREG_FULLY_DECOMPRESSED;
+
+    // XXXR3: todo, warn when the bounds are not exact
 
     return UC_ERR_OK;
 }
@@ -172,30 +204,10 @@ static uc_err write_cap_reg(CPUARMState *env, unsigned int regid, uc_cheri_cap *
 {
     cap_register_t capreg;
     memset(&capreg, 0, sizeof(capreg));
-    capreg._cr_cursor = cap->address;
-    capreg.cr_base = cap->base;
-    capreg._cr_top = cap->top;
-    capreg.cr_tag = cap->tag;
-    // XXXR3: todo, encode permissions and otype
-    capreg.cr_pesbt = _CC_ENCODE_FIELD(_CC_N(UPERMS_ALL), UPERMS) | _CC_ENCODE_FIELD(_CC_N(PERMS_ALL), HWPERMS) |
-                      _CC_ENCODE_FIELD(_CC_N(OTYPE_UNSEALED), OTYPE);
-    
-    // compress
-    bool exact = false;
-    capreg.cr_exp = CC128M_RESET_EXP;
-    uint32_t new_ebt = cc128m_compute_ebt(cap->base, cap->top, NULL, &exact);
-    uint64_t new_base;
-    __uint128_t new_top;
-    bool new_bounds_valid = cc128m_compute_base_top(cc128m_extract_bounds_bits(_CC_ENCODE_FIELD(new_ebt, EBT)),
-                                                    capreg._cr_cursor, &new_base, &new_top);
-    // see setbounds_impl
-    cc128m_update_ebt(&capreg, new_ebt);
-    capreg.cr_bounds_valid = new_bounds_valid;
-    capreg.cr_extra = CREG_FULLY_DECOMPRESSED;
+    craft_cap_reg(&capreg, cap);
 
     update_capreg(env, regid, &capreg);
 
-    // XXXR3: todo, warn when the bounds are not exact
     return UC_ERR_OK;
 }
 
@@ -208,12 +220,14 @@ static uc_err reg_read(CPUARMState *env, unsigned int regid, void *value)
     if (regid >= UC_ARM64_REG_V0 && regid <= UC_ARM64_REG_V31) {
         regid += UC_ARM64_REG_Q0 - UC_ARM64_REG_V0;
     }
-#ifdef TARGET_CHERI
     if (regid >= UC_ARM64_REG_C0 && regid <= UC_ARM64_REG_C28) {
+#ifdef TARGET_CHERI
         ret = read_cap_reg(env, regid - UC_ARM64_REG_C0, (uc_cheri_cap *)value);
-    } else
+#else
+        // no capability registers
+        ret = UC_ERR_ARG;
 #endif
-    if (regid >= UC_ARM64_REG_X0 && regid <= UC_ARM64_REG_X28) {
+    } else if (regid >= UC_ARM64_REG_X0 && regid <= UC_ARM64_REG_X28) {
         *(int64_t *)value = arm_get_xreg(env, regid - UC_ARM64_REG_X0);
     } else if (regid >= UC_ARM64_REG_W0 && regid <= UC_ARM64_REG_W30) {
         *(int32_t *)value = READ_DWORD(arm_get_xreg(env, regid - UC_ARM64_REG_W0));
@@ -266,24 +280,50 @@ static uc_err reg_read(CPUARMState *env, unsigned int regid, void *value)
         case UC_ARM64_REG_X30:
             *(int64_t *)value = arm_get_xreg(env, 30);
             break;
+        case UC_ARM64_REG_C29: {
+#ifdef TARGET_CHERI
+            ret = read_cap_reg(env, 29, (uc_cheri_cap *)value);
+#else
+        // no capability registers
+            ret = UC_ERR_ARG;
+#endif
+            break;
+        }
+        case UC_ARM64_REG_C30: {
+#ifdef TARGET_CHERI
+            ret = read_cap_reg(env, 30, (uc_cheri_cap *)value);
+#else
+        // no capability registers
+            ret = UC_ERR_ARG;
+#endif
+            break;
+        }
         case UC_ARM64_REG_PC: {
+            *(uint64_t *)value = get_aarch_reg_as_x(&env->pc);
+            break;
+        }
+        case UC_ARM64_REG_PCC: {
 #ifdef TARGET_CHERI
             cap_register_t *pcc = _cheri_get_pcc_unchecked(env);
-            ((uc_cheri_cap *)value)->address = pcc->_cr_cursor;
-            ((uc_cheri_cap *)value)->base = pcc->cr_base;
-            ((uc_cheri_cap *)value)->top = pcc->_cr_top;
-            ((uc_cheri_cap *)value)->tag = pcc->cr_tag;
-            ((uc_cheri_cap *)value)->uperms = cap_get_uperms(pcc);
-            ((uc_cheri_cap *)value)->perms = cap_get_perms(pcc);
-            ((uc_cheri_cap *)value)->otype = cap_get_otype_unsigned(pcc);
+            ret = parse_cap_reg(pcc, (uc_cheri_cap *)value);
 #else
-            *(uint64_t *)value = get_aarch_reg_as_x(&env->pc);
+            // no capability registers
+            ret = UC_ERR_ARG;
 #endif
             break;
         }
         case UC_ARM64_REG_SP:
             *(int64_t *)value = arm_get_xreg(env, 31);
             break;
+        case UC_ARM64_REG_CSP: {
+#ifdef TARGET_CHERI
+            ret = read_cap_reg(env, 31, (uc_cheri_cap *)value);
+#else
+            // no capability registers
+            ret = UC_ERR_ARG;
+#endif
+            break;
+        }
         case UC_ARM64_REG_NZCV:
             *(int32_t *)value = cpsr_read(env) & CPSR_NZCV;
             break;
@@ -324,12 +364,14 @@ static uc_err reg_write(CPUARMState *env, unsigned int regid, const void *value)
     if (regid >= UC_ARM64_REG_V0 && regid <= UC_ARM64_REG_V31) {
         regid += UC_ARM64_REG_Q0 - UC_ARM64_REG_V0;
     }
-#ifdef TARGET_CHERI
     if (regid >= UC_ARM64_REG_C0 && regid <= UC_ARM64_REG_C28) {
+#ifdef TARGET_CHERI
         ret = write_cap_reg(env, regid - UC_ARM64_REG_C0, (uc_cheri_cap *)value);
-    } else 
+#else
+        // no capability registers
+        ret = UC_ERR_ARG;
 #endif
-    if (regid >= UC_ARM64_REG_X0 && regid <= UC_ARM64_REG_X28) {
+    } else if (regid >= UC_ARM64_REG_X0 && regid <= UC_ARM64_REG_X28) {
         arm_set_xreg(env, regid - UC_ARM64_REG_X0, *(uint64_t *)value);
     } else if (regid >= UC_ARM64_REG_W0 && regid <= UC_ARM64_REG_W30) {
         uint64_t old_val = arm_get_xreg(env, regid - UC_ARM64_REG_W0);
@@ -384,18 +426,47 @@ static uc_err reg_write(CPUARMState *env, unsigned int regid, const void *value)
         case UC_ARM64_REG_X30:
             arm_set_xreg(env, 30, *(uint64_t *)value);
             break;
-        case UC_ARM64_REG_PC: {
+        case UC_ARM64_REG_C29: {
 #ifdef TARGET_CHERI
-            // write_cap_reg(env, CHERI_EXC_REGNUM_PCC, (uc_cheri_cap *)value);
-            set_max_perms_capability(&env->pc.cap, *(uint64_t *)value);
+            ret = write_cap_reg(env, 29, (uc_cheri_cap *)value);
 #else
-            set_aarch_reg_value(&env->pc, *(uint64_t *)value);
+            ret = UC_ERR_ARG;
 #endif
             break;
         }
-        case UC_ARM64_REG_SP:
+        case UC_ARM64_REG_C30: {
+#ifdef TARGET_CHERI
+            ret = write_cap_reg(env, 30, (uc_cheri_cap *)value);
+#else
+            ret = UC_ERR_ARG;
+#endif
+            break;
+        }
+        case UC_ARM64_REG_PC: {
+            set_aarch_reg_value(&env->pc, *(uint64_t *)value);
+            break;
+        }
+        case UC_ARM64_REG_PCC: {  // XXXR3: for now, it takes uint64_t!
+#ifdef TARGET_CHERI
+            set_max_perms_capability(&env->pc.cap, *(uint64_t *)value);
+            // cap_register_t *new_pcc = craft_capability((uc_cheri_cap *)value);
+            // env->pc.cap = *new_pcc;
+#else
+            ret = UC_ERR_ARG;
+#endif
+        }
+        case UC_ARM64_REG_SP: {
             arm_set_xreg(env, 31, *(uint64_t *)value);
             break;
+        }
+        case UC_ARM64_REG_CSP: {
+#ifdef TARGET_CHERI
+            ret = write_cap_reg(env, 31, (uc_cheri_cap *)value);
+#else
+            ret = UC_ERR_ARG;
+#endif
+            break;
+        }
         case UC_ARM64_REG_NZCV:
             cpsr_write(env, *(uint32_t *)value, CPSR_NZCV, CPSRWriteRaw);
             break;

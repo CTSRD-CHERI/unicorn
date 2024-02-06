@@ -46,6 +46,7 @@ typedef enum uc_arm64_reg {
     UC_ARM64_REG_C29,
     UC_ARM64_REG_C30,
     UC_ARM64_REG_NZCV,
+    UC_ARM64_REG_CSP,
     UC_ARM64_REG_SP,
     UC_ARM64_REG_WSP,
     UC_ARM64_REG_WZR,
@@ -335,6 +336,7 @@ typedef enum uc_arm64_reg {
 
     //> pseudo registers
     UC_ARM64_REG_PC, // program counter register
+    UC_ARM64_REG_PCC,
 
     UC_ARM64_REG_CPACR_EL1,
 
