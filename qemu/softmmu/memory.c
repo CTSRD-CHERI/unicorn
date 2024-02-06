@@ -24,6 +24,10 @@
 #include "exec/exec-all.h"
 #include "uc_priv.h"
 
+#ifdef TARGET_CHERI
+#include "cheri_tagmem.h"
+#endif
+
 //#define DEBUG_UNASSIGNED
 
 typedef struct AddrRange AddrRange;
@@ -48,7 +52,9 @@ MemoryRegion *memory_map(struct uc_struct *uc, hwaddr begin, size_t size, uint32
         g_free(ram);
         return NULL;
     }
-
+#ifdef TARGET_CHERI
+    cheri_tag_init(ram, size);
+#endif
     memory_region_add_subregion(uc->system_memory, begin, ram);
 
     if (uc->cpu) {
@@ -69,7 +75,9 @@ MemoryRegion *memory_map_ptr(struct uc_struct *uc, hwaddr begin, size_t size, ui
         g_free(ram);
         return NULL;
     }
-
+#ifdef TARGET_CHERI
+    cheri_tag_init(ram, size);
+#endif
     memory_region_add_subregion(uc->system_memory, begin, ram);
 
     if (uc->cpu) {
