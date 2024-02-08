@@ -153,7 +153,7 @@ static uc_err write_cp_reg(CPUARMState *env, uc_arm64_cp_reg *cp)
 
 #ifdef TARGET_CHERI
 
-static uc_err parse_cap_reg(cap_register_t *src, uc_cheri_cap *dst)
+static uc_err parse_cap_reg(const cap_register_t *src, uc_cheri_cap *dst)
 {
     dst->address = src->_cr_cursor;
     dst->base = src->cr_base;
@@ -168,7 +168,7 @@ static uc_err parse_cap_reg(cap_register_t *src, uc_cheri_cap *dst)
 
 static uc_err read_cap_reg(CPUARMState *env, unsigned int regid, uc_cheri_cap *cap)
 {
-    cap_register_t *capreg = get_readonly_capreg(env, regid);
+    const cap_register_t *capreg = get_readonly_capreg(env, regid);
     return parse_cap_reg(capreg, cap);
 }
 
@@ -304,7 +304,7 @@ static uc_err reg_read(CPUARMState *env, unsigned int regid, void *value)
         }
         case UC_ARM64_REG_PCC: {
 #ifdef TARGET_CHERI
-            cap_register_t *pcc = _cheri_get_pcc_unchecked(env);
+            const cap_register_t *pcc = _cheri_get_pcc_unchecked(env);
             ret = parse_cap_reg(pcc, (uc_cheri_cap *)value);
 #else
             // no capability registers
