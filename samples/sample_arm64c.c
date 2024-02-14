@@ -102,7 +102,6 @@ static void test_arm64c_mem_fetch(void)
     }
     uc_mem_map(uc, data_address, 0x30000, UC_PROT_ALL);
     uc_mem_map(uc, 0x400000, 0x1000, UC_PROT_ALL);
-    printf("B\n");
     csp.address = data_address;
     csp.base = data_address;
     csp.top = data_address + 0x100;
@@ -111,7 +110,6 @@ static void test_arm64c_mem_fetch(void)
     csp.perms = 0; // ignored for now, default FULL
     csp.otype = 0; // ignored for now, default unsealed
     uc_reg_write(uc, UC_ARM64_REG_CSP, &csp);
-    printf("C\n");
     uc_mem_write(uc, data_address, "\xc8\xc8\xc8\xc8\xc8\xc8\xc8\xc8", 8);
     uc_mem_write(uc, shellcode_address, shellcode0, 4);
     uc_mem_write(uc, shellcode_address + 4, shellcode, 4);

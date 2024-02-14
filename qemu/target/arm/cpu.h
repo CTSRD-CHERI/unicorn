@@ -2123,7 +2123,11 @@ static inline bool arm_el_is_aa64(CPUARMState *env, int el)
 {
 #ifdef TARGET_CHERI
     // Morello always a64
-    return true;
+    // return true;
+
+    // XXXR3: unicorn hack for get_phys_addr
+    if (el == 2 || el == 3) return true;
+    else return false;
 #else
     /* This isn't valid for EL0 (if we're in EL0, is_a64() is what you want,
      * and if we're not in EL0 then the state of EL0 isn't well defined.)
