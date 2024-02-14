@@ -4892,7 +4892,7 @@ static void disas_bitfield(DisasContext *s, uint32_t insn)
             goto done;
         } else if (opc == 2) { /* UBFM: UBFX, LSR, UXTB, UXTH */
             tcg_gen_extract_i64(tcg_ctx, tcg_rd, tcg_tmp, ri, len);
-            return;
+            goto done_no_extend;
         }
         /* opc == 1, BFXIL fall through to deposit */
         tcg_gen_shri_i64(tcg_ctx, tcg_tmp, tcg_tmp, ri);
@@ -4920,7 +4920,7 @@ static void disas_bitfield(DisasContext *s, uint32_t insn)
            any bits outside bitsize, therefore the zero-extension
            below is unneeded.  */
         tcg_gen_deposit_z_i64(tcg_ctx, tcg_rd, tcg_tmp, pos, len);
-        return;
+        goto done_no_extend;
     }
 
  done:

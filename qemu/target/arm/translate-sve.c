@@ -4475,6 +4475,7 @@ static void do_ldr(DisasContext *s, uint32_t vofs, int len, int rn, int imm)
     tcg_gen_addi_i64(tcg_ctx, dirty_addr, cpu_reg_sp(s, rn), imm);
     clean_addr = clean_data_tbi_and_cheri(s, dirty_addr, true, false, MO_8, rn, false, true);
     tcg_temp_free_i64(tcg_ctx, dirty_addr);
+    t0 = tcg_temp_new_i64(tcg_ctx);
 
     /* Note that unpredicated load/store of vector/predicate registers
      * are defined as a stream of bytes, which equates to little-endian
