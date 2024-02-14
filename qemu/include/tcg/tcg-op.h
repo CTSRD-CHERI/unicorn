@@ -900,7 +900,7 @@ static inline void tcg_gen_insn_start(TCGContext *tcg_ctx, target_ulong pc, targ
  * be NULL and @idx should be 0.  Otherwise, @tb should be valid and
  * @idx should be one of the TB_EXIT_ values.
  */
-void tcg_gen_exit_tb(TCGContext *tcg_ctx, TranslationBlock *tb, unsigned idx);
+void tcg_gen_exit_tb(TCGContext *tcg_ctx, const TranslationBlock *tb, unsigned idx);
 
 /**
  * tcg_gen_goto_tb() - output goto_tb TCG operation

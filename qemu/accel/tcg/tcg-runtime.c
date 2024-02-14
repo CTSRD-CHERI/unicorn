@@ -27,6 +27,9 @@
 #include "exec/helper-proto.h"
 #include "exec/cpu_ldst.h"
 #include "exec/exec-all.h"
+#ifdef TARGET_CHERI
+#include "cheri-helper-utils.h"
+#endif
 #include "exec/tb-lookup.h"
 #include "tcg/tcg.h"
 

@@ -242,7 +242,7 @@ static void test_arm64c_mem()
     uc_hook trace1, trace2;
 
     int64_t x11 = 0x12345678;
-    uc_cheri_cap c13;  // this must be a valid capability
+    uc_cheri_cap c13; // this must be a valid capability
     int64_t x15 = 0x33;
 
     c13.address = ADDRESS + 0x10;
@@ -250,13 +250,14 @@ static void test_arm64c_mem()
     c13.top = ADDRESS + 0x100;
     c13.tag = 1;
     c13.uperms = 0; // ignored for now, default FULL
-    c13.perms = 0; // ignored for now, default FULL
-    c13.otype = 0; // ignored for now, default unsealed
+    c13.perms = 0;  // ignored for now, default FULL
+    c13.otype = 0;  // ignored for now, default unsealed
 
     printf("Emulate ARM64 C64 code (memory load and store)\n");
 
     // Initialize emulator in ARM C64 mode
-    err = uc_open(UC_ARCH_ARM64, UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
+    err = uc_open(UC_ARCH_ARM64,
+                  UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
     if (err) {
         printf("Failed on uc_open() with error returned: %u (%s)\n", err,
                uc_strerror(err));

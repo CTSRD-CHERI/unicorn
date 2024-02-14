@@ -107,8 +107,6 @@ static inline bool gen_cheri_cap_cap_int(DisasContext *ctx, int cd, int cn,
                                          int rm,
                                          cheri_cap_cap_int_helper *gen_func)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
-
     return gen_cheri_cap_cap_int_imm(ctx, cd, cn, rm, 0, gen_func);
 }
 
@@ -229,8 +227,6 @@ static void set_NZCV(DisasContext *ctx, TCGv_i32 N, TCGv_i32 Z, TCGv_i32 C,
 
 static inline TCGv_i64 cpu_reg_maybe_0(DisasContext *ctx, int regnum)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
-
     if (regnum == NULL_CAPREG_INDEX) {
         return cpu_reg(ctx, 31);
     } else {
@@ -240,8 +236,6 @@ static inline TCGv_i64 cpu_reg_maybe_0(DisasContext *ctx, int regnum)
 
 static inline TCGv_i64 read_cpu_reg_maybe_0(DisasContext *ctx, int regnum)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
-
     if (regnum == NULL_CAPREG_INDEX) {
         return read_cpu_reg(ctx, 31, 1);
     } else {
@@ -666,7 +660,6 @@ TRANS_F(ADD_SUB)
 // This covers all the pairs
 TRANS_F(LDP_STP)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     bool load = a->L;
 
     if (a->op1 == 0 && a->op2 != 0b11) {
@@ -761,7 +754,6 @@ TRANS_F(ADD1)
 // Load/Store unscaled immediate via alternate base
 TRANS_F(AUR)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     int size, extend_size;
     bool is_load;
 
@@ -793,7 +785,6 @@ TRANS_F(AUR)
 
 TRANS_F(ALIGN)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -804,7 +795,6 @@ TRANS_F(ALIGN)
 
 TRANS_F(FLGS)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (a->op == 0b11)
         return false;
     if (capabilities_enabled_exception(ctx))
@@ -958,14 +948,12 @@ static bool cvt_impl_cap_to_ptr(DisasContext *ctx, uint32_t rd, uint32_t cn,
 
 TRANS_F(CVT)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
     return cvt_impl_ptr_to_cap(ctx, AS_ZERO(a->Cd), a->Cn, a->Rm, false, false);
 }
 TRANS_F(CVT1)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
     return cvt_impl_ptr_to_cap(ctx, AS_ZERO(a->Cd), a->Cn, a->Rm, true, false);
@@ -1062,7 +1050,6 @@ static TCGv_i32 get_link_reg(DisasContext *ctx, bool link)
 
 static bool should_be_executive(DisasContext *ctx)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
 
     if (!GET_FLAG(ctx, EXECUTIVE)) {
         unallocated_encoding(ctx);
@@ -1297,7 +1284,6 @@ TRANS_F(CHK)
 
 TRANS_F(CAS)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -1402,7 +1388,6 @@ TRANS_F(BUILD_CSEAL_CPYE)
 
 TRANS_F(CLRPERM)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -1417,8 +1402,6 @@ TRANS_F(CLRPERM)
 
 static bool isTagSettingDisabled(DisasContext *ctx)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
-
     // This flag is maps to the correct CSR for the current exception level
     return GET_FLAG(ctx, SETTAG) ? true : false;
 }
@@ -1426,8 +1409,6 @@ static bool isTagSettingDisabled(DisasContext *ctx)
 // Set capability tag. Got weirdly named by script
 TRANS_F(SCG)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
-
     if (ctx->current_el == 0)
         return false;
 
@@ -1473,7 +1454,6 @@ TRANS_F(SCG1)
 
 TRANS_F(CLRTAG_CPY)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     // 10 is cpy, 00 is clr tag
     if (a->opc & 1)
         return false;
@@ -1493,7 +1473,6 @@ TRANS_F(CLRTAG_CPY)
 // Seal (immediate, for special types)
 TRANS_F(SEAL)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (a->form == 0)
         return false;
 
@@ -1592,7 +1571,6 @@ TRANS_F(CSEL)
 
 TRANS_F(CFHI)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (a->opc == 0b11)
         return false;
 
@@ -1621,7 +1599,6 @@ TRANS_F(CFHI)
 // CVT with PCC / DDC as a base, cap -> ptr
 TRANS_F(CVT2)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (a->opc > 0b01)
         return false;
 
@@ -1636,7 +1613,6 @@ TRANS_F(CVT2)
 
 TRANS_F(GC)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -1708,7 +1684,6 @@ TRANS_F(LDPBR)
 
 TRANS_F(LDR)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -1730,7 +1705,6 @@ static uint64_t size_log(uint64_t op)
 // imm9 with op for different sizes
 TRANS_F(LDR_STR)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     // op:      01 post increment
     //          11 pre increment
     //          10 immediate translated
@@ -1762,7 +1736,6 @@ TRANS_F(LDR_STR)
 // imm12
 TRANS_F(LDR_STR1)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -1774,7 +1747,6 @@ TRANS_F(LDR_STR1)
 
 TRANS_F(LDR_STR2)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (!(a->option_name & 0b10))
         return false;
 
@@ -1830,7 +1802,6 @@ TRANS_F(RR)
 
 TRANS_F(SCBNDS)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -1879,7 +1850,6 @@ TRANS_F(SC)
 // CVT cap -> ptr
 TRANS_F(CVT3)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -1888,7 +1858,6 @@ TRANS_F(CVT3)
 
 TRANS_F(SWP)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -1901,7 +1870,6 @@ TRANS_F(SWP)
 // CVT with PCC / DDC as a base, ptr -> cap
 TRANS_F(CVT4)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -1939,7 +1907,6 @@ TRANS_F(CLRPERM1)
 // Load store via alternate base
 TRANS_F(ARB_ALDR)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 
@@ -1953,7 +1920,6 @@ TRANS_F(ARB_ALDR)
 // Load store via alternate base register offset
 TRANS_F(ASTR_ALDR1)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (!(a->option_name & 0b10))
         return false;
 
@@ -2021,7 +1987,6 @@ TRANS_F(ASTR_ALDR1)
 // Load store capability via alternate base
 TRANS_F(ASTR_ALDR)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (!(a->option_name & 0b10))
         return false;
 
@@ -2076,7 +2041,6 @@ TRANS_F(CT)
 
 TRANS_F(LDAPR)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (capabilities_enabled_exception(ctx))
         return true;
 

@@ -4231,7 +4231,7 @@ static inline uint32_t arm_rebuild_chflags_el(CPUARMState *env, int el)
         FIELD_DP32(chflags, TBFLAG_CHERI, SCTLRSA, 1, chflags);
     }
 
-    uint32_t chflags_changed = env->chflags ^ chflags;
+    // uint32_t chflags_changed = env->chflags ^ chflags;
     env->chflags = chflags;
 
     // if (FIELD_EX32(chflags_changed, TBFLAG_CHERI, PSTATE_C64)) {

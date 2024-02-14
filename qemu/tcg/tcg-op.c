@@ -2737,7 +2737,7 @@ void tcg_gen_extr32_i64(TCGContext *tcg_ctx, TCGv_i64 lo, TCGv_i64 hi, TCGv_i64 
 
 /* QEMU specific operations.  */
 
-void tcg_gen_exit_tb(TCGContext *tcg_ctx, TranslationBlock *tb, unsigned idx)
+void tcg_gen_exit_tb(TCGContext *tcg_ctx, const TranslationBlock *tb, unsigned idx)
 {
     uintptr_t val = (uintptr_t)tb + idx;
 

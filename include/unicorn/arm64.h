@@ -390,8 +390,8 @@ typedef enum uc_arm64_reg {
 
     UC_ARM64_REG_ENDING, // <-- mark the end of the list of registers
 
-    // XXXR3: the aliased regs depend on the mode, eg. C registers for C64
-    //> alias registers
+// XXXR3: the aliased regs depend on the mode, eg. C registers for C64
+//> alias registers
 #ifdef TARGET_CHERI
     UC_ARM64_REG_IP0 = UC_ARM64_REG_C16,
     UC_ARM64_REG_IP1 = UC_ARM64_REG_C17,

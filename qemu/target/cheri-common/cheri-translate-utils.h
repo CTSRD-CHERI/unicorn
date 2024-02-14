@@ -159,7 +159,6 @@ TCGv_i64 cpu_reg(DisasContext *s, int reg);
 
 static inline bool have_cheri_tb_flags(DisasContext *ctx, uint32_t flags)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     return (ctx->base.cheri_flags & flags) == flags;
 }
 
@@ -458,7 +457,6 @@ static inline void gen_ddc_interposed_ld_i64(DisasContext *ctx, TCGv_i64 result,
                                              TCGv ddc_offset, TCGArg arg,
                                              MemOp op)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     gen_special_interposed_ld_i64(ctx, result, checked_addr, ddc_offset, arg,
                                   op, /*use_ddc=*/true);
 }
@@ -467,7 +465,6 @@ static inline void gen_ddc_interposed_ld_i32(DisasContext *ctx, TCGv_i32 result,
                                              TCGv ddc_offset, TCGArg arg,
                                              MemOp op)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     gen_special_interposed_ld_i32(ctx, result, checked_addr, ddc_offset, arg,
                                   op, /*use_ddc=*/true);
 }
@@ -476,7 +473,6 @@ static inline void gen_ddc_interposed_st_i64(DisasContext *ctx, TCGv_i64 value,
                                              TCGv ddc_offset, TCGArg arg,
                                              MemOp op)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     gen_special_interposed_st_i64(ctx, value, checked_addr, ddc_offset, arg, op,
                                   /*use_ddc=*/true);
 }
@@ -485,7 +481,6 @@ static inline void gen_ddc_interposed_st_i32(DisasContext *ctx, TCGv_i32 value,
                                              TCGv ddc_offset, TCGArg arg,
                                              MemOp op)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     gen_special_interposed_st_i32(ctx, value, checked_addr, ddc_offset, arg, op,
                                   /*use_ddc=*/true);
 }
@@ -706,7 +701,6 @@ static inline void gen_lazy_cap_get_state_i32(DisasContext *ctx, int regnum,
 static inline bool disas_capreg_state_could_be(DisasContext *ctx, int reg,
                                                CapRegState state)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
 #ifdef ENABLE_STATIC_CAP_OPTS
     return !!(ctx->base.cap_compression_states[reg] & (1 << state));
 #else
@@ -717,7 +711,6 @@ static inline bool disas_capreg_state_could_be(DisasContext *ctx, int reg,
 static inline bool disas_capreg_state_must_be(DisasContext *ctx, int reg,
                                               CapRegState state)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
 #ifdef ENABLE_STATIC_CAP_OPTS
     return (ctx->base.cap_compression_states[reg] == (1 << state));
 #else
@@ -730,7 +723,6 @@ static inline bool disas_capreg_state_must_be2(DisasContext *ctx, int reg,
                                                CapRegState state1,
                                                CapRegState state2)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
 #ifdef ENABLE_STATIC_CAP_OPTS
     return !(ctx->base.cap_compression_states[reg] &
              ~((1 << state1) | (1 << state2)));
@@ -741,7 +733,6 @@ static inline bool disas_capreg_state_must_be2(DisasContext *ctx, int reg,
 
 static inline void disas_capreg_state_set_unknown(DisasContext *ctx, int reg)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
 #ifdef ENABLE_STATIC_CAP_OPTS
     if (lazy_capreg_number_is_special(reg))
         return;
@@ -752,7 +743,6 @@ static inline void disas_capreg_state_set_unknown(DisasContext *ctx, int reg)
 static inline void disas_capreg_state_set(DisasContext *ctx, int reg,
                                           CapRegState state)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
 #ifdef ENABLE_STATIC_CAP_OPTS
     if (lazy_capreg_number_is_special(reg))
         return;
@@ -763,7 +753,6 @@ static inline void disas_capreg_state_set(DisasContext *ctx, int reg,
 static inline void disas_capreg_state_include(DisasContext *ctx, int reg,
                                               CapRegState state)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
 #ifdef ENABLE_STATIC_CAP_OPTS
     if (lazy_capreg_number_is_special(reg))
         return;
@@ -774,7 +763,6 @@ static inline void disas_capreg_state_include(DisasContext *ctx, int reg,
 static inline void disas_capreg_state_remove(DisasContext *ctx, int reg,
                                              CapRegState state)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
 #ifdef ENABLE_STATIC_CAP_OPTS
     if (lazy_capreg_number_is_special(reg))
         return;
@@ -825,8 +813,6 @@ static inline void gen_unconditional_cap_decompress(DisasContext *ctx,
 // WARN: calling this will kill any temps
 static void gen_ensure_cap_decompressed(DisasContext *ctx, int regnum)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
-
     if (disas_capreg_state_must_be(ctx, regnum, CREG_FULLY_DECOMPRESSED))
         return;
     else if (!disas_capreg_state_could_be(ctx, regnum, CREG_FULLY_DECOMPRESSED))
@@ -961,7 +947,6 @@ static inline void gen_lazy_cap_set_state_cond(DisasContext *ctx, int regnum,
 static inline void gen_lazy_cap_set_state(DisasContext *ctx, int regnum,
                                           CapRegState state)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     return gen_lazy_cap_set_state_cond(ctx, regnum, state, false);
 }
 
@@ -986,7 +971,6 @@ static inline void gen_lazy_cap_set_int_cond(DisasContext *ctx, int regnum,
 
 static inline void gen_lazy_cap_set_int(DisasContext *ctx, int regnum)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     gen_lazy_cap_set_int_cond(ctx, regnum, false);
 #ifdef TRACE_MODIFIED_REGISTERS
     gen_reg_modified_int(ctx, regnum);
@@ -1057,7 +1041,6 @@ static inline void gen_cap_invalidate_cursor(DisasContext *ctx, int regnum)
 static inline void gen_move_cap_gp_sp(DisasContext *ctx, int dest_num,
                                       uint32_t source_off)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (dest_num == NULL_CAPREG_INDEX)
         return;
     gen_move_cap(ctx, gp_register_offset(dest_num), source_off);
@@ -1070,7 +1053,6 @@ static inline void gen_move_cap_gp_sp(DisasContext *ctx, int dest_num,
 static inline void gen_move_cap_sp_gp(DisasContext *ctx, uint32_t dest_off,
                                       int source_num)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     gen_ensure_cap_decompressed(ctx, source_num);
     gen_cap_sync_cursor(ctx, source_num);
     gen_move_cap(ctx, dest_off, gp_register_offset(source_num));
@@ -1082,7 +1064,6 @@ static inline void gen_move_cap_sp_gp(DisasContext *ctx, uint32_t dest_off,
 static inline void gen_move_cap_gp_gp(DisasContext *ctx, int dest_num,
                                       int source_num)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (dest_num == NULL_CAPREG_INDEX)
         return;
     gen_ensure_cap_decompressed(ctx, source_num);
@@ -1103,17 +1084,16 @@ static inline void gen_move_cap_gp_select_gp(DisasContext *ctx, int dest_num,
                                              int false_source_num, TCGCond cond,
                                              TCGv_i32 value)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     if (dest_num == NULL_CAPREG_INDEX)
         return;
 
-    const char *format =
-        is_unsigned_cond(cond)
-            ? "Conditional move to %d from (%u %d 0) ? %d : %d\n"
-            : "Conditional move to %d from (%d %s 0) ? %d : %d\n";
-    cheri_tcg_printf_verbose("cwccc", format, dest_num, value,
-                             tcg_cond_string(cond), true_source_num,
-                             false_source_num);
+    // const char *format =
+    //     is_unsigned_cond(cond)
+    //         ? "Conditional move to %d from (%u %d 0) ? %d : %d\n"
+    //         : "Conditional move to %d from (%d %s 0) ? %d : %d\n";
+    // cheri_tcg_printf_verbose("cwccc", format, dest_num, value,
+    //                          tcg_cond_string(cond), true_source_num,
+    //                          false_source_num);
     cheri_debug_assert(disas_capreg_state_must_be(ctx, true_source_num,
                                                   CREG_FULLY_DECOMPRESSED));
     cheri_debug_assert(disas_capreg_state_must_be(ctx, false_source_num,
@@ -1295,7 +1275,6 @@ static inline void gen_cap_get_tag(DisasContext *ctx, int regnum, TCGv tagged)
 
 static inline void gen_cap_get_type(DisasContext *ctx, int regnum, TCGv type)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     gen_cap_pesbt_extract_OTYPE(ctx, regnum, type);
     cheri_tcg_printf_verbose("cd", "Get reg %d type: %d\n", regnum, type);
 }
@@ -1315,7 +1294,6 @@ static inline void gen_cap_get_type_for_copytype(DisasContext *ctx, int regnum,
 static inline void gen_cap_set_type_unchecked(DisasContext *ctx, int regnum,
                                               TCGv type)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     cheri_tcg_printf_verbose("cd", "Set reg %d type: %d\n", regnum, type);
     gen_cap_pesbt_deposit_OTYPE(ctx, regnum, type);
 }
@@ -1352,7 +1330,6 @@ static inline void gen_cap_get_sealed_i32(DisasContext *ctx, int regnum,
 
 static inline void gen_cap_get_perms(DisasContext *ctx, int regnum, TCGv perms)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     gen_cap_pesbt_extract_HWPERMS(ctx, regnum, perms);
     cheri_tcg_printf_verbose("cd", "Ge reg %d perms: %x\n", regnum, perms);
 }
@@ -1487,7 +1464,6 @@ static inline void gen_cap_get_length(DisasContext *ctx, int regnum,
 static inline void gen_cap_get_base_below_top(DisasContext *ctx, int regnum,
                                               TCGv_i64 result)
 {
-    TCGContext *tcg_ctx = ctx->uc->tcg_ctx;
     // TODO: Is this possible for caps that are validly decoded? In which case
     // this can be replaced with a single load.
     gen_cap_get_base(ctx, regnum, result);

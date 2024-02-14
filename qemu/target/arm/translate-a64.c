@@ -44,6 +44,7 @@
 #ifdef TARGET_CHERI
 
 #include "cheri-archspecific.h"
+#include "cheri-helper-utils.h"
 
 #define GET_FLAG(C, F)                                                         \
     (C->base.cheri_flags &                                                     \
@@ -650,16 +651,16 @@ static inline bool use_goto_tb(DisasContext *s, int n, uint64_t dest)
 static inline void gen_goto_tb(DisasContext *s, int n, uint64_t dest)
 {
     TCGContext *tcg_ctx = s->uc->tcg_ctx;
-    TranslationBlock *tb;
+    const TranslationBlock *tb;
 
     tb = s->base.tb;
     if (use_goto_tb(s, n, dest)) {
         tcg_gen_goto_tb(tcg_ctx, n);
-        gen_a64_set_pc_im(tcg_ctx, dest);
+        gen_a64_set_pc_im_safe(s, dest);
         tcg_gen_exit_tb(tcg_ctx, tb, n);
         s->base.is_jmp = DISAS_NORETURN;
     } else {
-        gen_a64_set_pc_im(tcg_ctx, dest);
+        gen_a64_set_pc_im_safe(s, dest);
         if (s->ss_active) {
             gen_step_complete_exception(s);
         } else if (s->base.singlestep_enabled) {
@@ -3695,7 +3696,6 @@ static void disas_ldst_reg_imm9(DisasContext *s, uint32_t insn,
     }
 
     if (writeback) {
-        TCGv_i64 tcg_rn = cpu_reg_sp(s, rn);
         if (post_index) {
             tcg_gen_addi_i64(tcg_ctx, dirty_addr, dirty_addr, imm9);
         }

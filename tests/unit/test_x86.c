@@ -1124,8 +1124,8 @@ static void test_x86_invalid_vex_l(void)
     OK(uc_close(uc));
 }
 
-// AARCH64 inline the read while s390x won't split the access. Though not tested on other hosts
-// but we restrict a bit more.
+// AARCH64 inline the read while s390x won't split the access. Though not tested
+// on other hosts but we restrict a bit more.
 #if !defined(TARGET_READ_INLINED) && defined(BOOST_LITTLE_ENDIAN)
 
 struct writelog_t {

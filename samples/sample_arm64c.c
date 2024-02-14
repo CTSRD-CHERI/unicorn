@@ -1,4 +1,4 @@
-/* 
+/*
     Unicorn Engine sample code to demonstrate how to emulate aarch64c code
     Copyright (C) 2024 Zhuo Ying Jiang Li <zyj20 [at] cl.cam.ac.uk>
 
@@ -14,7 +14,8 @@
 
     You should have received a copy of the GNU Library General Public
     License along with this library; if not, write to the Free Software
-    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
+    Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301
+   USA
 */
 
 #include <unicorn/unicorn.h>
@@ -43,7 +44,6 @@
 // mrs        x2, tpidrro_el0
 #define ARM64C_MRS_CODE "\x62\xd0\x3b\xd5"
 
-
 // memory address where emulation starts
 #define ADDRESS 0x10000
 
@@ -67,11 +67,14 @@ static void print_capability(uc_cheri_cap *cap)
     printf("{\n");
     printf("    Address:     0x%016" PRIx64 "\n", cap->address);
     printf("    Base:        0x%016" PRIx64 "\n", cap->base);
-    printf("    Top:         0x%" PRIx64 "%016" PRIx64 " %s\n", (uint64_t)(cap->top >> 64), (uint64_t)cap->top,
-            cap->top > UINT64_MAX ? " (greater than UINT64_MAX)" : "");
-    printf("    Permissions: 0x%" PRIx32 "\n", cap->perms);  // XXXR3: todo, pretty-print
+    printf("    Top:         0x%" PRIx64 "%016" PRIx64 " %s\n",
+           (uint64_t)(cap->top >> 64), (uint64_t)cap->top,
+           cap->top > UINT64_MAX ? " (greater than UINT64_MAX)" : "");
+    printf("    Permissions: 0x%" PRIx32 "\n",
+           cap->perms); // XXXR3: todo, pretty-print
     printf("    User Perms:  0x%" PRIx32 "\n", cap->uperms);
-    printf("    OType:       0x%" PRIx32 "\n", cap->otype); // XXXR3: pretty-print
+    printf("    OType:       0x%" PRIx32 "\n",
+           cap->otype); // XXXR3: pretty-print
     printf("    Tag:         %d\n", cap->tag);
     printf("}\n");
 }
@@ -89,9 +92,10 @@ static void test_arm64c_mem_fetch(void)
     unsigned shellcode_address = 0x4002C0;
     uint64_t data_address = 0x10000000000000;
 
-    printf(">>> Emulate ARM64 C64 fetching stack data from high address %" PRIx64
-           "\n",
-           data_address);
+    printf(
+        ">>> Emulate ARM64 C64 fetching stack data from high address %" PRIx64
+        "\n",
+        data_address);
 
     // Initialize emulator in ARM mode
     err = uc_open(UC_ARCH_ARM64, UC_MODE_ARM | UC_MODE_C64, &uc);
@@ -107,8 +111,8 @@ static void test_arm64c_mem_fetch(void)
     csp.top = data_address + 0x100;
     csp.tag = 1;
     csp.uperms = 0; // ignored for now, default FULL
-    csp.perms = 0; // ignored for now, default FULL
-    csp.otype = 0; // ignored for now, default unsealed
+    csp.perms = 0;  // ignored for now, default FULL
+    csp.otype = 0;  // ignored for now, default unsealed
     uc_reg_write(uc, UC_ARM64_REG_CSP, &csp);
     uc_mem_write(uc, data_address, "\xc8\xc8\xc8\xc8\xc8\xc8\xc8\xc8", 8);
     uc_mem_write(uc, shellcode_address, shellcode0, 4);
@@ -138,7 +142,7 @@ static void test_arm64c_mem_fetch(void)
 // XXXR3: todo, implement uc_mem_write_cap
 // static void test_arm64c_mem_fetch_cap(void)
 // {
-//     
+//
 // }
 
 static void test_arm64c(void)
@@ -152,7 +156,8 @@ static void test_arm64c(void)
     printf("Emulate ARM64 C64 code (integer arithmetic operation)\n");
 
     // Initialize emulator in ARM C64 mode
-    err = uc_open(UC_ARCH_ARM64, UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
+    err = uc_open(UC_ARCH_ARM64,
+                  UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
     if (err) {
         printf("Failed on uc_open() with error returned: %u (%s)\n", err,
                uc_strerror(err));
@@ -176,7 +181,8 @@ static void test_arm64c(void)
 
     // emulate machine code in infinite time (last param = 0), or when
     // finishing all the code.
-    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_ADD_CODE) - 1, 0, 0);
+    err =
+        uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_ADD_CODE) - 1, 0, 0);
     if (err) {
         printf("Failed on uc_emu_start() with error returned: %u\n", err);
     }
@@ -210,8 +216,8 @@ static void test_arm64c_cap(void)
     c1.top = ADDRESS + 0x100;
     c1.tag = 1;
     c1.uperms = 0; // ignored for now, default FULL
-    c1.perms = 0; // ignored for now, default FULL
-    c1.otype = 0; // ignored for now, default unsealed
+    c1.perms = 0;  // ignored for now, default FULL
+    c1.otype = 0;  // ignored for now, default unsealed
 
     printf("Emulate ARM64 C64 code (capability arithmetic operation)\n");
 
@@ -227,7 +233,8 @@ static void test_arm64c_cap(void)
     uc_mem_map(uc, ADDRESS, 2 * 1024 * 1024, UC_PROT_ALL);
 
     // write machine code to be emulated to memory
-    uc_mem_write(uc, ADDRESS, ARM64C_ADD_CAP_CODE, sizeof(ARM64C_ADD_CAP_CODE) - 1);
+    uc_mem_write(uc, ADDRESS, ARM64C_ADD_CAP_CODE,
+                 sizeof(ARM64C_ADD_CAP_CODE) - 1);
 
     // initialize machine registers
     uc_reg_write(uc, UC_ARM64_REG_C0, &c0);
@@ -235,7 +242,8 @@ static void test_arm64c_cap(void)
 
     // emulate machine code in infinite time (last param = 0), or when
     // finishing all the code.
-    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_ADD_CAP_CODE) - 1, 0, 0);
+    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_ADD_CAP_CODE) - 1,
+                       0, 0);
     if (err) {
         printf("Failed on uc_emu_start() with error returned: %u\n", err);
     }
@@ -258,7 +266,7 @@ static void test_arm64c_mem()
     uc_hook trace1, trace2;
 
     int64_t x11 = 0x12345678;
-    uc_cheri_cap c13;  // this must be a valid capability
+    uc_cheri_cap c13; // this must be a valid capability
     int64_t x15 = 0x33;
 
     c13.address = ADDRESS + 0x10;
@@ -266,13 +274,14 @@ static void test_arm64c_mem()
     c13.top = ADDRESS + 0x100;
     c13.tag = 1;
     c13.uperms = 0; // ignored for now, default FULL
-    c13.perms = 0; // ignored for now, default FULL
-    c13.otype = 0; // ignored for now, default unsealed
+    c13.perms = 0;  // ignored for now, default FULL
+    c13.otype = 0;  // ignored for now, default unsealed
 
     printf("Emulate ARM64 C64 code (memory load and store)\n");
 
     // Initialize emulator in ARM C64 mode
-    err = uc_open(UC_ARCH_ARM64, UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
+    err = uc_open(UC_ARCH_ARM64,
+                  UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
     if (err) {
         printf("Failed on uc_open() with error returned: %u (%s)\n", err,
                uc_strerror(err));
@@ -298,7 +307,8 @@ static void test_arm64c_mem()
 
     // emulate machine code in infinite time (last param = 0), or when
     // finishing all the code.
-    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_MEM_CODE) - 1, 0, 0);
+    err =
+        uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_MEM_CODE) - 1, 0, 0);
     if (err) {
         printf("Failed on uc_emu_start() with error returned: %u\n", err);
     }
@@ -331,8 +341,8 @@ static void test_arm64c_mem_cap()
     c0.top = ADDRESS + 0x100;
     c0.tag = 1;
     c0.uperms = 0; // ignored for now, default FULL
-    c0.perms = 0; // ignored for now, default FULL
-    c0.otype = 0; // ignored for now, default unsealed
+    c0.perms = 0;  // ignored for now, default FULL
+    c0.otype = 0;  // ignored for now, default unsealed
 
     memset(&c1, 0, sizeof(c1));
 
@@ -341,13 +351,14 @@ static void test_arm64c_mem_cap()
     csp.top = ADDRESS + 0x100;
     csp.tag = 1;
     csp.uperms = 0; // ignored for now, default FULL
-    csp.perms = 0; // ignored for now, default FULL
-    csp.otype = 0; // ignored for now, default unsealed
+    csp.perms = 0;  // ignored for now, default FULL
+    csp.otype = 0;  // ignored for now, default unsealed
 
     printf("Emulate ARM64 C64 code (memory load and store caps)\n");
 
     // Initialize emulator in ARM C64 mode
-    err = uc_open(UC_ARCH_ARM64, UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
+    err = uc_open(UC_ARCH_ARM64,
+                  UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
     if (err) {
         printf("Failed on uc_open() with error returned: %u (%s)\n", err,
                uc_strerror(err));
@@ -358,7 +369,8 @@ static void test_arm64c_mem_cap()
     uc_mem_map(uc, ADDRESS, 2 * 1024 * 1024, UC_PROT_ALL);
 
     // write machine code to be emulated to memory
-    uc_mem_write(uc, ADDRESS, ARM64C_MEM_CAP_CODE, sizeof(ARM64C_MEM_CAP_CODE) - 1);
+    uc_mem_write(uc, ADDRESS, ARM64C_MEM_CAP_CODE,
+                 sizeof(ARM64C_MEM_CAP_CODE) - 1);
 
     // initialize machine registers
     uc_reg_write(uc, UC_ARM64_REG_C0, &c0);
@@ -384,7 +396,8 @@ static void test_arm64c_mem_cap()
 
     // emulate machine code in infinite time (last param = 0), or when
     // finishing all the code.
-    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_MEM_CAP_CODE) - 1, 0, 0);
+    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_MEM_CAP_CODE) - 1,
+                       0, 0);
     if (err) {
         printf("Failed on uc_emu_start() with error returned: %u\n", err);
     }
