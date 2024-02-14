@@ -971,6 +971,7 @@ void tcg_gen_qemu_ld_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGArg, MemOp);
 void tcg_gen_qemu_st_i32(TCGContext *tcg_ctx, TCGv_i32, TCGv, TCGArg, MemOp);
 void tcg_gen_qemu_ld_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGArg, MemOp);
 void tcg_gen_qemu_st_i64(TCGContext *tcg_ctx, TCGv_i64, TCGv, TCGArg, MemOp);
+// XXXR3: TCGv is defined to be TCGv_i32 or i64 depending on the target platform. But I want it to respect the function name
 #define TCG_LD_HELPER(name, memop)                                             \
     static inline void tcg_gen_qemu_##name(TCGContext *tcg_ctx,                \
                                            TCGv ret, TCGv addr,                \
@@ -1011,18 +1012,74 @@ void handle_conditional_invalidate(TCGContext *tcg_ctx, TCGv_cap_checked_ptr che
                                    MemOp memop, TCGArg mmu_idx,
                                    TCGv_i32 store_happens);
 
-TCG_LD_HELPER(ld8u, MO_UB)
-TCG_LD_HELPER(ld8s, MO_SB)
-TCG_LD_HELPER(ld16u, MO_TEUW)
-TCG_LD_HELPER(ld16s, MO_TESW)
-TCG_LD_HELPER(ld32u, MO_TEUL)
-TCG_LD_HELPER(ld32s, MO_TESL)
-TCG_LD_HELPER(ld64, MO_TEQ)
+#ifndef TARGET_CHERI
+static inline void tcg_gen_qemu_ld8u(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_UB);
+}
 
-TCG_ST_HELPER(st8, MO_UB)
-TCG_ST_HELPER(st16, MO_TEUW)
-TCG_ST_HELPER(st32, MO_TEUL)
-TCG_ST_HELPER(st64, MO_TEQ)
+static inline void tcg_gen_qemu_ld8s(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_SB);
+}
+
+static inline void tcg_gen_qemu_ld16u(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_TEUW);
+}
+
+static inline void tcg_gen_qemu_ld16s(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_TESW);
+}
+
+static inline void tcg_gen_qemu_ld32u(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_TEUL);
+}
+
+static inline void tcg_gen_qemu_ld32s(TCGContext *tcg_ctx, TCGv ret, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_ld_tl(tcg_ctx, ret, addr, mem_index, MO_TESL);
+}
+
+static inline void tcg_gen_qemu_ld64(TCGContext *tcg_ctx, TCGv_i64 ret, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_ld_i64(tcg_ctx, ret, addr, mem_index, MO_TEQ);
+}
+
+static inline void tcg_gen_qemu_st8(TCGContext *tcg_ctx, TCGv arg, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_st_tl(tcg_ctx, arg, addr, mem_index, MO_UB);
+}
+
+static inline void tcg_gen_qemu_st16(TCGContext *tcg_ctx, TCGv arg, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_st_tl(tcg_ctx, arg, addr, mem_index, MO_TEUW);
+}
+
+static inline void tcg_gen_qemu_st32(TCGContext *tcg_ctx, TCGv arg, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_st_tl(tcg_ctx, arg, addr, mem_index, MO_TEUL);
+}
+
+static inline void tcg_gen_qemu_st64(TCGContext *tcg_ctx, TCGv_i64 arg, TCGv addr, int mem_index)
+{
+    tcg_gen_qemu_st_i64(tcg_ctx, arg, addr, mem_index, MO_TEQ);
+}
+#endif
+// TCG_LD_HELPER(ld8u, MO_UB)
+// TCG_LD_HELPER(ld8s, MO_SB)
+// TCG_LD_HELPER(ld16u, MO_TEUW)
+// TCG_LD_HELPER(ld16s, MO_TESW)
+// TCG_LD_HELPER(ld32u, MO_TEUL)
+// TCG_LD_HELPER(ld32s, MO_TESL)
+// TCG_LD_HELPER(ld64, MO_TEQ)
+
+// TCG_ST_HELPER(st8, MO_UB)
+// TCG_ST_HELPER(st16, MO_TEUW)
+// TCG_ST_HELPER(st32, MO_TEUL)
+// TCG_ST_HELPER(st64, MO_TEQ)
 
 #ifdef TARGET_CHERI
 #pragma GCC poison tcg_gen_atomic_cmpxchg_i32
