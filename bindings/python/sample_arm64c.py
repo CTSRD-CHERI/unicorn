@@ -4,7 +4,7 @@
 from __future__ import print_function
 from unicorn import *
 from unicorn.arm64_const import *
-
+from unicorn.cheri_const import *
 
 # code to be emulated
 # not memory-related instructions
@@ -84,7 +84,6 @@ def test_arm64c():
     except UcError as e:
         print("ERROR: %s" % e)
 
-# TODO
 def test_arm64c_mem_cap():
     print('Emulate ARM64 C64 code (memory load and store caps)')
     try:
@@ -98,10 +97,9 @@ def test_arm64c_mem_cap():
         mu.mem_write(ADDRESS, ARM64C_MEM_CAP_CODE)
 
         # initialize machine registers
-        # XXXR3: uperms, perms and otype ignored for now
         mu.reg_write(UC_ARM64_REG_C0, (ADDRESS + 0x33, ADDRESS, ADDRESS + 0x100, 1, 0, 0, 0))
         mu.reg_write(UC_ARM64_REG_C1, (0, 0, 0, 0, 0, 0, 0))
-        mu.reg_write(UC_ARM64_REG_CSP, (ADDRESS + 0x50, ADDRESS, ADDRESS + 0x100, 1, 0, 0, 0))
+        mu.reg_write(UC_ARM64_REG_CSP, (ADDRESS + 0x50, ADDRESS, ADDRESS + 0x100, 1, 0, UC_CHERI_PERM_LOAD | UC_CHERI_PERM_STORE | UC_CHERI_PERM_LOAD_CAP | UC_CHERI_PERM_STORE_CAP | UC_CHERI_PERM_STORE_LOCAL, 0))
 
         # tracing all basic blocks with customized callback
         mu.hook_add(UC_HOOK_BLOCK, hook_block)

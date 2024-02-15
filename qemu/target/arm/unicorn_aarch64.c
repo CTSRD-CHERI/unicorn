@@ -182,10 +182,9 @@ static uc_err craft_cap_reg(cap_register_t *target, uc_cheri_cap *val)
     target->cr_base = val->base;
     target->_cr_top = val->top;
     target->cr_tag = val->tag;
-    // XXXR3: todo, encode permissions and otype
-    target->cr_pesbt = _CC_ENCODE_FIELD(_CC_N(UPERMS_ALL), UPERMS) |
-                       _CC_ENCODE_FIELD(_CC_N(PERMS_ALL), HWPERMS) |
-                       _CC_ENCODE_FIELD(_CC_N(OTYPE_UNSEALED), OTYPE);
+    target->cr_pesbt = _CC_ENCODE_FIELD(val->uperms, UPERMS) |
+                       _CC_ENCODE_FIELD(val->perms, HWPERMS) |
+                       _CC_ENCODE_FIELD(val->otype, OTYPE);
 
     // compress
     bool exact = false;

@@ -110,9 +110,9 @@ static void test_arm64c_mem_fetch(void)
     csp.base = data_address;
     csp.top = data_address + 0x100;
     csp.tag = 1;
-    csp.uperms = 0; // ignored for now, default FULL
-    csp.perms = 0;  // ignored for now, default FULL
-    csp.otype = 0;  // ignored for now, default unsealed
+    csp.uperms = UC_CHERI_UPERMS_ALL;
+    csp.perms = UC_CHERI_PERM_STORE | UC_CHERI_PERM_LOAD;
+    csp.otype = UC_CHERI_OTYPE_UNSEALED;
     uc_reg_write(uc, UC_ARM64_REG_CSP, &csp);
     uc_mem_write(uc, data_address, "\xc8\xc8\xc8\xc8\xc8\xc8\xc8\xc8", 8);
     uc_mem_write(uc, shellcode_address, shellcode0, 4);
@@ -215,9 +215,9 @@ static void test_arm64c_cap(void)
     c1.base = ADDRESS;
     c1.top = ADDRESS + 0x100;
     c1.tag = 1;
-    c1.uperms = 0; // ignored for now, default FULL
-    c1.perms = 0;  // ignored for now, default FULL
-    c1.otype = 0;  // ignored for now, default unsealed
+    c1.uperms = 0;
+    c1.perms = 0;
+    c1.otype = UC_CHERI_OTYPE_UNSEALED;
 
     printf("Emulate ARM64 C64 code (capability arithmetic operation)\n");
 
@@ -273,9 +273,9 @@ static void test_arm64c_mem()
     c13.base = ADDRESS;
     c13.top = ADDRESS + 0x100;
     c13.tag = 1;
-    c13.uperms = 0; // ignored for now, default FULL
-    c13.perms = 0;  // ignored for now, default FULL
-    c13.otype = 0;  // ignored for now, default unsealed
+    c13.uperms = 0;
+    c13.perms = UC_CHERI_PERM_LOAD | UC_CHERI_PERM_STORE;
+    c13.otype = UC_CHERI_OTYPE_UNSEALED;
 
     printf("Emulate ARM64 C64 code (memory load and store)\n");
 
@@ -340,9 +340,9 @@ static void test_arm64c_mem_cap()
     c0.base = ADDRESS;
     c0.top = ADDRESS + 0x100;
     c0.tag = 1;
-    c0.uperms = 0; // ignored for now, default FULL
-    c0.perms = 0;  // ignored for now, default FULL
-    c0.otype = 0;  // ignored for now, default unsealed
+    c0.uperms = 0;
+    c0.perms = 0;
+    c0.otype = UC_CHERI_OTYPE_UNSEALED;
 
     memset(&c1, 0, sizeof(c1));
 
@@ -350,9 +350,9 @@ static void test_arm64c_mem_cap()
     csp.base = ADDRESS;
     csp.top = ADDRESS + 0x100;
     csp.tag = 1;
-    csp.uperms = 0; // ignored for now, default FULL
-    csp.perms = 0;  // ignored for now, default FULL
-    csp.otype = 0;  // ignored for now, default unsealed
+    csp.uperms = 0;
+    csp.perms = UC_CHERI_PERM_LOAD | UC_CHERI_PERM_STORE | UC_CHERI_PERM_LOAD_CAP | UC_CHERI_PERM_STORE_CAP | UC_CHERI_PERM_STORE_LOCAL;
+    csp.otype = UC_CHERI_OTYPE_UNSEALED;
 
     printf("Emulate ARM64 C64 code (memory load and store caps)\n");
 
@@ -452,6 +452,7 @@ static void test_update_pcc()
     printf(">>> Restricting PCC\n");
     pcc.base = ADDRESS;
     pcc.top = ADDRESS + sizeof(ARM64C_ADD_CODE);
+    pcc.perms = UC_CHERI_PERMS_ALL ^ UC_CHERI_PERM_LOAD; // XXXR3: this doesn't raise any errors
     uc_reg_write(uc, UC_ARM64_REG_PCC, &pcc);
     printf(">>> Restricted PCC: ");
     uc_reg_read(uc, UC_ARM64_REG_PCC, &pcc);
