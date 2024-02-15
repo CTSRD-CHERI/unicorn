@@ -417,6 +417,59 @@ static void test_arm64c_mem_cap()
     uc_close(uc);
 }
 
+static void test_update_pcc()
+{
+    uc_engine *uc;
+    uc_err err;
+
+    int64_t x0 = 0x1;
+    uc_cheri_cap pcc;
+
+    printf("Update PCC\n");
+
+    // Initialize emulator in ARM C64 mode
+    err = uc_open(UC_ARCH_ARM64,
+                  UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
+    if (err) {
+        printf("Failed on uc_open() with error returned: %u (%s)\n", err,
+               uc_strerror(err));
+        return;
+    }
+
+    // map 2MB memory for this emulation
+    uc_mem_map(uc, ADDRESS, 2 * 1024 * 1024, UC_PROT_ALL);
+
+    // write machine code to be emulated to memory
+    uc_mem_write(uc, ADDRESS, ARM64C_ADD_CODE, sizeof(ARM64C_ADD_CODE) - 1);
+
+    // initialize machine registers
+    uc_reg_write(uc, UC_ARM64_REG_X0, &x0);
+
+    uc_reg_read(uc, UC_ARM64_REG_PCC, &pcc);
+    printf(">>> Old PPC is ");
+    print_capability(&pcc);
+
+    printf(">>> Restricting PCC\n");
+    pcc.base = ADDRESS;
+    pcc.top = ADDRESS + sizeof(ARM64C_ADD_CODE);
+    uc_reg_write(uc, UC_ARM64_REG_PCC, &pcc);
+    printf(">>> Restricted PCC: ");
+    uc_reg_read(uc, UC_ARM64_REG_PCC, &pcc);
+    print_capability(&pcc);
+
+    // emulate machine code in infinite time (last param = 0), or when
+    // finishing all the code.
+    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_ADD_CODE) - 1, 0, 0);
+    if (err) {
+        printf("Failed on uc_emu_start() with error returned: %u\n", err);
+    }
+    uc_reg_read(uc, UC_ARM64_REG_PCC, &pcc);
+    printf(">>> Now PPC is ");
+    print_capability(&pcc);
+
+    uc_close(uc);
+}
+
 int main(int argc, char **argv, char **envp)
 {
     test_arm64c_mem_fetch();
@@ -432,6 +485,9 @@ int main(int argc, char **argv, char **envp)
 
     printf("-------------------------\n");
     test_arm64c_mem_cap();
+
+    printf("-------------------------\n");
+    test_update_pcc();
 
     return 0;
 }

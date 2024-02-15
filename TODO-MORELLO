@@ -1,4 +1,3 @@
-- Reg write PCC with full capability struct
 - APIs for decoding permissions and object types
 - Implement uc_mem_write_cap
 - Coprocessor registers

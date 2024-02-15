@@ -202,6 +202,7 @@ static uc_err craft_cap_reg(cap_register_t *target, uc_cheri_cap *val)
     target->cr_extra = CREG_FULLY_DECOMPRESSED;
 
     // XXXR3: todo, warn when the bounds are not exact
+    if (!exact) printf("Crafted capability with address 0x%x doesn't have exact bounds!\n", target->_cr_cursor);
 
     return UC_ERR_OK;
 }
@@ -462,11 +463,10 @@ static uc_err reg_write(CPUARMState *env, unsigned int regid, const void *value)
             set_aarch_reg_value(&env->pc, *(uint64_t *)value);
             break;
         }
-        case UC_ARM64_REG_PCC: { // XXXR3: for now, it takes uint64_t!
+        case UC_ARM64_REG_PCC: {
 #ifdef TARGET_CHERI
-            set_max_perms_capability(&env->pc.cap, *(uint64_t *)value);
-            // cap_register_t *new_pcc = craft_capability((uc_cheri_cap
-            // *)value); env->pc.cap = *new_pcc;
+            craft_cap_reg(&env->pc.cap, (uc_cheri_cap *)value);
+            // set_max_perms_capability(&env->pc.cap, *(uint64_t *)value);
 #else
             ret = UC_ERR_ARG;
 #endif

@@ -370,7 +370,7 @@ def reg_write(reg_write_func, arch, reg_id, value):
             if not isinstance(value, tuple) or len(value) != 6:
                 raise UcError(uc.UC_ERR_ARG)
             reg.crn, reg.crm, reg.op0, reg.op1, reg.op2, reg.val = value
-        elif reg_id in range(arm64_const.UC_ARM64_REG_C0, arm64_const.UC_ARM64_REG_C28+1) or reg_id == arm64_const.UC_ARM64_REG_C29 or reg_id == arm64_const.UC_ARM64_REG_C30 or reg_id == arm64_const.UC_ARM64_REG_CSP: # XXXR3: reg_write PCC currently takes an int
+        elif reg_id in range(arm64_const.UC_ARM64_REG_C0, arm64_const.UC_ARM64_REG_C28+1) or reg_id == arm64_const.UC_ARM64_REG_C29 or reg_id == arm64_const.UC_ARM64_REG_C30 or reg_id == arm64_const.UC_ARM64_REG_PCC or reg_id == arm64_const.UC_ARM64_REG_CSP:
             reg = uc_cheri_cap()
             if not isinstance(value, tuple) or len(value) != 7:
                 raise UcError(uc.UC_ERR_ARG)
