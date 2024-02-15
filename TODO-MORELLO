@@ -1,7 +1,9 @@
-- Write bindings
-- Write simple unit tests
-- Write bindings tests
+- Reg write PCC with full capability struct
 - APIs for decoding permissions and object types
 - Implement uc_mem_write_cap
 - Coprocessor registers
-- Add tests for hooking CHERI exceptions
+- Demonstrate hooking CHERI exceptions
+
+Lower priority:
+- Write simple unit tests
+- Write bindings tests

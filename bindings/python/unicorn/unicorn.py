@@ -246,6 +246,7 @@ ARMCPReg = Tuple[int, int, int, int, int, int, int]
 ARM64CPReg = Tuple[int, int, int, int, int]
 ARMCPRegValue = Tuple[int, int, int, int, int, int, int, int]
 ARM64CPRegValue = Tuple[int, int, int, int, int, int]
+CHERICapReg = Tuple[int, int, int, int, int, int, int]
 X86MMRReg = Tuple[int, int, int, int]
 X86FPReg = Tuple[int, int]
 
@@ -314,7 +315,14 @@ def reg_read(reg_read_func, arch, reg_id, opt=None):
             if status != uc.UC_ERR_OK:
                 raise UcError(status)
             return reg.low_qword | (reg.high_qword << 64)
-
+        
+        elif reg_id in range(arm64_const.UC_ARM64_REG_C0, arm64_const.UC_ARM64_REG_C28+1) or reg_id == arm64_const.UC_ARM64_REG_C29 or reg_id == arm64_const.UC_ARM64_REG_C30 or reg_id == arm64_const.UC_ARM64_REG_PCC or reg_id == arm64_const.UC_ARM64_REG_CSP:
+            reg = uc_cheri_cap()
+            status = reg_read_func(reg_id, ctypes.byref(reg))
+            if status != uc.UC_ERR_OK:
+                raise UcError(status)
+            return reg.address, reg.base, reg.top.value(), reg.tag, reg.uperms, reg.perms, reg.otype
+    
     # read to 64bit number to be safe
     reg = ctypes.c_uint64(0)
     status = reg_read_func(reg_id, ctypes.byref(reg))
@@ -362,6 +370,17 @@ def reg_write(reg_write_func, arch, reg_id, value):
             if not isinstance(value, tuple) or len(value) != 6:
                 raise UcError(uc.UC_ERR_ARG)
             reg.crn, reg.crm, reg.op0, reg.op1, reg.op2, reg.val = value
+        elif reg_id in range(arm64_const.UC_ARM64_REG_C0, arm64_const.UC_ARM64_REG_C28+1) or reg_id == arm64_const.UC_ARM64_REG_C29 or reg_id == arm64_const.UC_ARM64_REG_C30 or reg_id == arm64_const.UC_ARM64_REG_CSP: # XXXR3: reg_write PCC currently takes an int
+            reg = uc_cheri_cap()
+            if not isinstance(value, tuple) or len(value) != 7:
+                raise UcError(uc.UC_ERR_ARG)
+            reg.address = value[0]
+            reg.base = value[1]
+            reg.top = c_uint128(value[2])
+            reg.tag = value[3]
+            reg.uperms = value[4]
+            reg.perms = value[5]
+            reg.otype = value[6]
 
     if arch == uc.UC_ARCH_ARM:
         if reg_id == arm_const.UC_ARM_REG_CP_REG:
@@ -399,6 +418,33 @@ def _catch_hook_exception(func):
 
     return wrapper
 
+# Python ctypes doesn't define uint128_t
+class c_uint128(ctypes.Structure):
+    _fields_ = [
+        ('int128', ctypes.c_uint64 * 2)
+    ]
+
+    def __init__(self, number = 0):
+        self.int128[0] = number & 0xffffffffffffffff           #lower 64 bits
+        self.int128[1] = (number >> 64) & 0xffffffffffffffff   #upper 64 bits
+
+    def __str__(self):
+        return str((self.int128[1] << 64) | self.int128[0])
+
+    def value(self):
+        return (self.int128[1] << 64) | self.int128[0]
+    
+class uc_cheri_cap(ctypes.Structure):
+    """CHERI capability"""
+    _fields_ = [
+        ("address", ctypes.c_uint64),
+        ("base", ctypes.c_uint64),
+        ("top", c_uint128),
+        ("tag", ctypes.c_uint8),
+        ("uperms", ctypes.c_uint32),
+        ("perms", ctypes.c_uint32),
+        ("otype", ctypes.c_uint32),
+    ]
 
 class uc_arm_cp_reg(ctypes.Structure):
     """ARM coprocessors registers for instructions MRC, MCR, MRRC, MCRR"""
@@ -556,11 +602,13 @@ class Uc(object):
             raise UcError(status)
 
     # return the value of a register, for @opt parameter, specify int for x86 msr, tuple for arm cp/neon regs.
-    def reg_read(self, reg_id: int, opt: Union[None, int, ARMCPReg, ARM64CPReg]=None) -> Union[int, X86MMRReg, X86FPReg]:
+    # XXXR3
+    def reg_read(self, reg_id: int, opt: Union[None, int, ARMCPReg, ARM64CPReg]=None) -> Union[int, CHERICapReg, X86MMRReg, X86FPReg]:
         return reg_read(functools.partial(_uc.uc_reg_read, self._uch), self._arch, reg_id, opt)
 
+    # XXXR3
     # write to a register, tuple for arm cp regs.
-    def reg_write(self, reg_id: int, value: Union[int, ARMCPRegValue, ARM64CPRegValue, X86MMRReg, X86FPReg]):
+    def reg_write(self, reg_id: int, value: Union[int, ARMCPRegValue, ARM64CPRegValue, CHERICapReg, X86MMRReg, X86FPReg]):
         return reg_write(functools.partial(_uc.uc_reg_write, self._uch), self._arch, reg_id, value)
 
     # read from MSR - X86 only

@@ -6,7 +6,7 @@ import sys, re, os
 
 INCL_DIR = os.path.join('..', 'include', 'unicorn')
 
-include = [ 'arm.h', 'arm64.h', 'mips.h', 'x86.h', 'sparc.h', 'm68k.h', 'ppc.h', 'riscv.h', 's390x.h', 'tricore.h', 'unicorn.h' ]
+include = [ 'arm.h', 'arm64.h', 'mips.h', 'x86.h', 'sparc.h', 'm68k.h', 'ppc.h', 'riscv.h', 's390x.h', 'tricore.h', 'unicorn.h', 'cheri.h' ]
 
 template = {
     'python': {
@@ -26,6 +26,7 @@ template = {
             's390x.h' : 's390x',
             'tricore.h' : 'tricore',
             'unicorn.h': 'unicorn',
+            'cheri.h': 'cheri',
             'comment_open': '#',
             'comment_close': '',
         },
@@ -46,6 +47,7 @@ template = {
             's390x.h' : 's390x',
             'tricore.h' : 'tricore',
             'unicorn.h': 'unicorn',
+            'cheri.h': 'cheri',
             'comment_open': '#',
             'comment_close': '',
         },
@@ -66,6 +68,7 @@ template = {
             's390x.h' : 's390x',
             'tricore.h' : 'tricore',
             'unicorn.h': 'unicorn',
+            'cheri.h': 'cheri',
             'comment_open': '//',
             'comment_close': '',
         },
@@ -86,6 +89,7 @@ template = {
             's390x.h' : 'S390x',
             'tricore.h' : 'TriCore',
             'unicorn.h': 'Unicorn',
+            'cheri.h': 'CHERI',
             'comment_open': '//',
             'comment_close': '',
         },
@@ -106,6 +110,7 @@ template = {
             's390x.h' : 'S390x',
             'tricore.h' : 'TriCore',
             'unicorn.h': 'Common',
+            'cheri.h': 'CHERI',
             'comment_open': '    //',
             'comment_close': '',
         },
@@ -126,6 +131,7 @@ template = {
             's390x.h' : 'S390x',
             'tricore.h' : 'TriCore',
             'unicorn.h': 'Unicorn',
+            'cheri.h': 'CHERI',
             'comment_open': '//',
             'comment_close': '',
         },

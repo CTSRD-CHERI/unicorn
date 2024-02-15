@@ -93,7 +93,7 @@ static void test_arm64c_mem_fetch(void)
     uint64_t data_address = 0x10000000000000;
 
     printf(
-        ">>> Emulate ARM64 C64 fetching stack data from high address %" PRIx64
+        "Emulate ARM64 C64 fetching stack data from high address %" PRIx64
         "\n",
         data_address);
 
