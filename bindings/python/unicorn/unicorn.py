@@ -155,6 +155,8 @@ _setup_prototype(_uc, "uc_reg_read", ucerr, uc_engine, ctypes.c_int, ctypes.c_vo
 _setup_prototype(_uc, "uc_reg_write", ucerr, uc_engine, ctypes.c_int, ctypes.c_void_p)
 _setup_prototype(_uc, "uc_mem_read", ucerr, uc_engine, ctypes.c_uint64, ctypes.POINTER(ctypes.c_char), ctypes.c_size_t)
 _setup_prototype(_uc, "uc_mem_write", ucerr, uc_engine, ctypes.c_uint64, ctypes.POINTER(ctypes.c_char), ctypes.c_size_t)
+_setup_prototype(_uc, "uc_mem_read_cap", ucerr, uc_engine, ctypes.c_uint64, ctypes.c_void_p)
+_setup_prototype(_uc, "uc_mem_write_cap", ucerr, uc_engine, ctypes.c_uint64, ctypes.c_void_p)
 _setup_prototype(_uc, "uc_emu_start", ucerr, uc_engine, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_uint64, ctypes.c_size_t)
 _setup_prototype(_uc, "uc_emu_stop", ucerr, uc_engine)
 _setup_prototype(_uc, "uc_hook_del", ucerr, uc_engine, uc_hook_h)
@@ -602,11 +604,9 @@ class Uc(object):
             raise UcError(status)
 
     # return the value of a register, for @opt parameter, specify int for x86 msr, tuple for arm cp/neon regs.
-    # XXXR3
     def reg_read(self, reg_id: int, opt: Union[None, int, ARMCPReg, ARM64CPReg]=None) -> Union[int, CHERICapReg, X86MMRReg, X86FPReg]:
         return reg_read(functools.partial(_uc.uc_reg_read, self._uch), self._arch, reg_id, opt)
 
-    # XXXR3
     # write to a register, tuple for arm cp regs.
     def reg_write(self, reg_id: int, value: Union[int, ARMCPRegValue, ARM64CPRegValue, CHERICapReg, X86MMRReg, X86FPReg]):
         return reg_write(functools.partial(_uc.uc_reg_write, self._uch), self._arch, reg_id, value)
@@ -630,6 +630,30 @@ class Uc(object):
     # write to memory
     def mem_write(self, address: int, data: bytes):
         status = _uc.uc_mem_write(self._uch, address, data, len(data))
+        if status != uc.UC_ERR_OK:
+            raise UcError(status)
+        
+    # read cap from memory
+    def mem_read_cap(self, address: int) -> CHERICapReg:
+        cap = uc_cheri_cap()
+        status = _uc.uc_mem_read_cap(self._uch, address, ctypes.byref(cap))
+        if status != uc.UC_ERR_OK:
+            raise UcError(status)
+        return cap.address, cap.base, cap.top.value(), cap.tag, cap.uperms, cap.perms, cap.otype
+    
+    # write cap to memory
+    def mem_write_cap(self, address: int, value: CHERICapReg):
+        cap = uc_cheri_cap()
+        if not isinstance(value, tuple) or len(value) != 7:
+            raise UcError(uc.UC_ERR_ARG)
+        cap.address = value[0]
+        cap.base = value[1]
+        cap.top = c_uint128(value[2])
+        cap.tag = value[3]
+        cap.uperms = value[4]
+        cap.perms = value[5]
+        cap.otype = value[6]
+        status = _uc.uc_mem_write_cap(self._uch, address, ctypes.byref(cap))
         if status != uc.UC_ERR_OK:
             raise UcError(status)
 

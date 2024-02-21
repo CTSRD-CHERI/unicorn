@@ -121,6 +121,10 @@ def test_arm64c_mem_cap():
         print_capability(c1)
         print(">>> CSP = ")
         print_capability(csp)
+
+        print("Use uc_mem_read_cap to read capability at csp+0x10:")
+        cap = mu.mem_read_cap(csp[0] + 0x10)
+        print_capability(cap)
     except UcError as e:
         print("ERROR: %s" % e)
 
