@@ -32,6 +32,11 @@ void arm64_reg_reset(struct uc_struct *uc);
 
 void arm_uc_init(struct uc_struct *uc);
 
+int arm64c_mem_read_cap(struct uc_struct *uc, uint64_t address,
+                        uc_cheri_cap *cap);
+int arm64c_mem_write_cap(struct uc_struct *uc, uint64_t address,
+                         const uc_cheri_cap *cap);
+
 void arm64_uc_init(struct uc_struct *uc);
 void arm64c_uc_init(struct uc_struct *uc);
 #endif

@@ -12,6 +12,7 @@
 #include "unicorn.h"
 
 #ifdef TARGET_CHERI
+#include "cheri-helper-utils.h"
 
 // #include "cheri_compressed_cap_common.h"
 // the macro is undefined at the end of the file!
@@ -201,7 +202,10 @@ static uc_err craft_cap_reg(cap_register_t *target, uc_cheri_cap *val)
     target->cr_extra = CREG_FULLY_DECOMPRESSED;
 
     // XXXR3: todo, warn when the bounds are not exact
-    if (!exact) printf("Crafted capability with address 0x%x doesn't have exact bounds!\n", target->_cr_cursor);
+    if (!exact)
+        printf(
+            "Crafted capability with address 0x%x doesn't have exact bounds!\n",
+            target->_cr_cursor);
 
     return UC_ERR_OK;
 }
@@ -630,6 +634,38 @@ static int arm64_cpus_init(struct uc_struct *uc, const char *cpu_model)
     return 0;
 }
 
+#ifdef TARGET_CHERI
+int arm64c_mem_read_cap(struct uc_struct *uc, uint64_t address,
+                        uc_cheri_cap *cap)
+{
+    CPUARMState *env = &(ARM_CPU(uc->cpu)->env);
+    cap_register_t result = load_and_decompress_cap_from_memory(env, address);
+
+    cap->address = result._cr_cursor;
+    cap->base = result.cr_base;
+    cap->top = result._cr_top;
+    cap->tag = result.cr_tag;
+    cap->uperms = cap_get_uperms(&result);
+    cap->perms = cap_get_perms(&result);
+    cap->otype = cap_get_otype_unsigned(&result);
+
+    // XXXR3: todo, UC_ERR_LC_TRAP for traps
+    return UC_ERR_OK;
+}
+
+int arm64c_mem_write_cap(struct uc_struct *uc, uint64_t address,
+                         const uc_cheri_cap *cap)
+{
+    CPUARMState *env = &(ARM_CPU(uc->cpu)->env);
+    cap_register_t crafted;
+    craft_cap_reg(&crafted, cap);
+    store_decompressed_cap_to_memory(env, &crafted, address);
+
+    // XXXR3: todo, UC_ERR_LC_TRAP for traps
+    return UC_ERR_OK;
+}
+#endif
+
 DEFAULT_VISIBILITY
 #ifdef TARGET_CHERI
 void arm64c_uc_init(struct uc_struct *uc)
@@ -640,6 +676,10 @@ void arm64_uc_init(struct uc_struct *uc)
     uc->reg_read = arm64_reg_read;
     uc->reg_write = arm64_reg_write;
     uc->reg_reset = arm64_reg_reset;
+#ifdef TARGET_CHERI
+    uc->write_mem_cap = arm64c_mem_write_cap;
+    uc->read_mem_cap = arm64c_mem_read_cap;
+#endif
     uc->set_pc = arm64_set_pc;
     uc->get_pc = arm64_get_pc;
     uc->release = arm64_release;

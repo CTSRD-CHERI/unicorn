@@ -384,6 +384,12 @@ cap_register_t load_and_decompress_cap_from_memory_raw(
     CPUArchState *env, uint32_t cb, const cap_register_t *source,
     target_ulong vaddr, uintptr_t retpc, hwaddr *physaddr);
 
+/* Useful for Unicorn */
+cap_register_t load_and_decompress_cap_from_memory(
+    CPUArchState *env, target_ulong vaddr);
+void store_decompressed_cap_to_memory(CPUArchState *env, const cap_register_t *cap,
+    target_ulong vaddr);
+
 void cheri_jump_and_link(CPUArchState *env, const cap_register_t *target,
                          target_ulong addr, uint32_t link_reg,
                          target_ulong link_pc, uint32_t cjalr_flags);

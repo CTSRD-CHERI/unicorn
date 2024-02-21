@@ -672,6 +672,21 @@ uc_err uc_mem_write(uc_engine *uc, uint64_t address, const void *_bytes,
     }
 }
 
+UNICORN_EXPORT
+uc_err uc_mem_write_cap(uc_engine *uc, uint64_t address,
+                        const uc_cheri_cap *cap)
+{
+    UC_INIT(uc);
+    return uc->write_mem_cap(uc, address, cap);
+}
+
+UNICORN_EXPORT
+uc_err uc_mem_read_cap(uc_engine *uc, uint64_t address, uc_cheri_cap *cap)
+{
+    UC_INIT(uc);
+    return uc->read_mem_cap(uc, address, cap);
+}
+
 #define TIMEOUT_STEP 2 // microseconds
 static void *_timeout_fn(void *arg)
 {

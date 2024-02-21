@@ -587,8 +587,6 @@ if(MSVC)
         /FIaarch64.h
         /I${CMAKE_CURRENT_SOURCE_DIR}/msvc/aarch64-softmmu
         /I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/arm
-        # /I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common
-        # /I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common/cheri-compressed-cap
     )
 else()
     target_compile_options(aarch64-softmmu PRIVATE
@@ -598,9 +596,6 @@ else()
         -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/arm
         -Wno-unused-variable
         -Wno-unused-function
-        # -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common
-        # -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common/cheri-compressed-cap
-        -ggdb
     )
 endif()
 
@@ -652,10 +647,7 @@ else()
         -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/arm
         -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common
         -I${CMAKE_CURRENT_SOURCE_DIR}/qemu/target/cheri-common/cheri-compressed-cap
-        -Wno-unused-variable
-        -Wno-unused-function
         -Werror=incompatible-pointer-types
-        -ggdb
     )
 endif()
 

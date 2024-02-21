@@ -1569,6 +1569,108 @@ void store_cap_to_memory(CPUArchState *env, uint32_t cs, target_ulong vaddr,
                                          cpu_mmu_index(env, false));
 }
 
+cap_register_t load_and_decompress_cap_from_memory(
+    CPUArchState *env, target_ulong vaddr)
+{
+    // cheri_debug_assert(QEMU_IS_ALIGNED(vaddr, CHERI_CAP_SIZE));
+    uintptr_t retpc = GETPC();
+    int mmu_idx = cpu_mmu_index(env, false);
+    target_ulong pesbt, cursor;
+    /*
+     * Load otype and perms from memory (might trap on load)
+     *
+     * Note: In-memory capabilities pesbt is xored with a mask to ensure that
+     * NULL capabilities have an all zeroes representation.
+     */
+    /* No TLB fault possible, should be safe to get a host pointer now */
+    void *host = probe_read(env, vaddr, CHERI_CAP_SIZE, mmu_idx, retpc);
+    // When writing back pesbt we have to XOR with the NULL mask to ensure that
+    // NULL capabilities have an all-zeroes representation.
+    if (likely(host)) {
+        // Fast path, host address in TLB
+#if TARGET_LONG_BITS == 32
+#define ld_cap_word_p ldl_p
+#elif TARGET_LONG_BITS == 64
+#define ld_cap_word_p ldq_p
+#else
+#error "Unhandled target long width"
+#endif
+        pesbt = ld_cap_word_p((char *)host + CHERI_MEM_OFFSET_METADATA) ^
+                CAP_NULL_XOR_MASK;
+        cursor = ld_cap_word_p((char *)host + CHERI_MEM_OFFSET_CURSOR);
+#undef ld_cap_word_p
+    } else {
+        // Slow path for e.g. IO regions.
+        pesbt = cpu_ld_cap_word_ra(env, vaddr + CHERI_MEM_OFFSET_METADATA, retpc) ^
+                CAP_NULL_XOR_MASK;
+        cursor = cpu_ld_cap_word_ra(env, vaddr + CHERI_MEM_OFFSET_CURSOR, retpc);
+    }
+    // lookup tagmem for tag and protections
+    int prot;
+    bool tag = cheri_tag_get_raw(env, vaddr, &prot, mmu_idx);
+
+    // strip tag due to MMU permissions or traps
+    if (tag && (prot & PAGE_LC_CLEAR)) {  // clear tag
+        tag = 0;
+    }
+    if ((tag && (prot & PAGE_LC_TRAP)) || (prot & PAGE_LC_TRAP_ANY)) { // trap
+        // Unicorn hack: don't raise an exception
+        // XXXR3: todo, throw a UC_ERR 
+        tag = 0;
+        // raise_load_tag_exception(env, va, cb, retpc);
+    }
+
+    cap_register_t result;
+    CAP_cc(decompress_raw)(pesbt, cursor, tag, &result);
+    result.cr_extra = CREG_FULLY_DECOMPRESSED;
+    return result;
+}
+
+void store_decompressed_cap_to_memory(CPUArchState *env, const cap_register_t *cap,
+    target_ulong vaddr)
+{
+    uintptr_t retpc = GETPC();
+    int mmu_idx = cpu_mmu_index(env, false);
+    target_ulong cursor = cap_get_cursor(cap);
+    target_ulong pesbt_for_mem = cap->cr_pesbt ^ CAP_NULL_XOR_MASK;
+    bool tag = cap->cr_tag;
+    /*
+     * Touching the tags will take both the data write TLB fault and
+     * capability write TLB fault before updating anything.  Thereafter, the
+     * data stores will not take additional faults, so there is no risk of
+     * accidentally tagging a shorn data write.  This, like the rest of the
+     * tag logic, is not multi-TCG-thread safe.
+     */
+    void *host = NULL;
+    if (tag) { // XXXR3
+        host = cheri_tag_set_raw(env, vaddr, retpc, mmu_idx);
+    } else {
+        host = cheri_tag_invalidate_aligned(env, vaddr, retpc, mmu_idx);
+    }
+    // When writing back pesbt we have to XOR with the NULL mask to ensure that
+    // NULL capabilities have an all-zeroes representation.
+    if (likely(host)) {
+#if TARGET_LONG_BITS == 32
+#define st_cap_word_p stl_p
+#elif TARGET_LONG_BITS == 64
+#define st_cap_word_p stq_p
+#else
+#error "Unhandled target long width"
+#endif
+        // Fast path, host address in TLB
+        st_cap_word_p((char*)host + CHERI_MEM_OFFSET_METADATA, pesbt_for_mem);
+        st_cap_word_p((char*)host + CHERI_MEM_OFFSET_CURSOR, cursor);
+#undef st_cap_word_p
+    } else {
+        // Slow path for e.g. IO regions.
+        cpu_st_cap_word_ra(env, vaddr + CHERI_MEM_OFFSET_METADATA,
+                           pesbt_for_mem, retpc);
+        cpu_st_cap_word_ra(env, vaddr + CHERI_MEM_OFFSET_CURSOR, cursor,
+                           retpc);
+    }
+    return;
+}
+
 target_ulong CHERI_HELPER_IMPL(cloadtags(CPUArchState *env, uint32_t cb))
 {
     static const uint32_t perms = CAP_PERM_LOAD | CAP_PERM_LOAD_CAP;

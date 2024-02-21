@@ -92,10 +92,9 @@ static void test_arm64c_mem_fetch(void)
     unsigned shellcode_address = 0x4002C0;
     uint64_t data_address = 0x10000000000000;
 
-    printf(
-        "Emulate ARM64 C64 fetching stack data from high address %" PRIx64
-        "\n",
-        data_address);
+    printf("Emulate ARM64 C64 fetching stack data from high address %" PRIx64
+           "\n",
+           data_address);
 
     // Initialize emulator in ARM mode
     err = uc_open(UC_ARCH_ARM64, UC_MODE_ARM | UC_MODE_C64, &uc);
@@ -139,11 +138,154 @@ static void test_arm64c_mem_fetch(void)
     uc_close(uc);
 }
 
-// XXXR3: todo, implement uc_mem_write_cap
-// static void test_arm64c_mem_fetch_cap(void)
-// {
-//
-// }
+static void test_arm64c_mem_fetch_cap(void)
+{
+    uc_engine *uc;
+    uc_err err;
+
+    uc_cheri_cap c0, c1, csp;
+
+    c0.address = ADDRESS + 0x33;
+    c0.base = ADDRESS;
+    c0.top = ADDRESS + 0x100;
+    c0.tag = 1;
+    c0.uperms = 0;
+    c0.perms = 0;
+    c0.otype = UC_CHERI_OTYPE_UNSEALED;
+
+    memset(&c1, 0, sizeof(c1));
+
+    csp.address = ADDRESS + 0x50; // 0x10 aligned
+    csp.base = ADDRESS;
+    csp.top = ADDRESS + 0x100;
+    csp.tag = 1;
+    csp.uperms = 0;
+    csp.perms = UC_CHERI_PERM_LOAD | UC_CHERI_PERM_STORE |
+                UC_CHERI_PERM_LOAD_CAP | UC_CHERI_PERM_STORE_CAP |
+                UC_CHERI_PERM_STORE_LOCAL;
+    csp.otype = UC_CHERI_OTYPE_UNSEALED;
+
+    printf("Emulate ARM64 C64 code (store tagged capability to memory and use "
+           "uc_mem_read_cap)\n");
+
+    // Initialize emulator in ARM C64 mode
+    err = uc_open(UC_ARCH_ARM64,
+                  UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
+    if (err) {
+        printf("Failed on uc_open() with error returned: %u (%s)\n", err,
+               uc_strerror(err));
+        return;
+    }
+
+    // map 2MB memory for this emulation
+    uc_mem_map(uc, ADDRESS, 2 * 1024 * 1024, UC_PROT_ALL);
+
+    // write machine code to be emulated to memory
+    uc_mem_write(uc, ADDRESS, ARM64C_MEM_CAP_CODE,
+                 sizeof(ARM64C_MEM_CAP_CODE) - 1);
+
+    // initialize machine registers
+    uc_reg_write(uc, UC_ARM64_REG_C0, &c0);
+    uc_reg_write(uc, UC_ARM64_REG_C1, &c1);
+    uc_reg_write(uc, UC_ARM64_REG_CSP, &csp);
+
+    // emulate machine code in infinite time (last param = 0), or when
+    // finishing all the code.
+    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_MEM_CAP_CODE) - 1,
+                       0, 0);
+    if (err) {
+        printf("Failed on uc_emu_start() with error returned: %u\n", err);
+    }
+
+    // now print out some registers
+    printf(">>> Emulation done. Below is the CPU context\n");
+    uc_reg_read(uc, UC_ARM64_REG_C0, &c0);
+    uc_reg_read(uc, UC_ARM64_REG_C1, &c1);
+    uc_reg_read(uc, UC_ARM64_REG_CSP, &csp);
+    printf(">>> C0 = ");
+    print_capability(&c0);
+    printf(">>> C1 = ");
+    print_capability(&c1);
+    printf(">>> CSP = ");
+    print_capability(&csp);
+
+    printf(">>> Read the capability stored at CSP+0x10:\n");
+    uc_cheri_cap res;
+    uc_mem_read_cap(uc, csp.address + 0x10, &res);
+    print_capability(&res);
+
+    uc_close(uc);
+}
+
+static void test_arm64c_mem_write_cap(void)
+{
+    uc_engine *uc;
+    uc_err err;
+
+    uc_cheri_cap c0, c1, csp;
+
+    c0.address = ADDRESS + 0x33;
+    c0.base = ADDRESS;
+    c0.top = ADDRESS + 0x100;
+    c0.tag = 1;
+    c0.uperms = 0;
+    c0.perms = 0;
+    c0.otype = UC_CHERI_OTYPE_UNSEALED;
+
+    memset(&c1, 0, sizeof(c1));
+
+    csp.address = ADDRESS + 0x50; // 0x10 aligned
+    csp.base = ADDRESS;
+    csp.top = ADDRESS + 0x100;
+    csp.tag = 1;
+    csp.uperms = 0;
+    csp.perms = UC_CHERI_PERM_LOAD | UC_CHERI_PERM_STORE |
+                UC_CHERI_PERM_LOAD_CAP | UC_CHERI_PERM_STORE_CAP |
+                UC_CHERI_PERM_STORE_LOCAL;
+    csp.otype = UC_CHERI_OTYPE_UNSEALED;
+
+    printf("Emulate ARM64 C64 code (use uc_mem_write_cap to store tagged "
+           "capability to memory)\n");
+
+    // Initialize emulator in ARM C64 mode
+    err = uc_open(UC_ARCH_ARM64,
+                  UC_MODE_LITTLE_ENDIAN | UC_MODE_ARM | UC_MODE_C64, &uc);
+    if (err) {
+        printf("Failed on uc_open() with error returned: %u (%s)\n", err,
+               uc_strerror(err));
+        return;
+    }
+
+    // map 2MB memory for this emulation
+    uc_mem_map(uc, ADDRESS, 2 * 1024 * 1024, UC_PROT_ALL);
+
+    // write machine code to be emulated to memory, load cap from csp+0x10
+    uc_mem_write(uc, ADDRESS, ARM64C_MEM_CAP_CODE + 4,
+                 sizeof(ARM64C_MEM_CAP_CODE) - 4 - 1);
+
+    // initialize machine registers
+    uc_mem_write_cap(uc, csp.address + 0x10,
+                     &c0); // (arbitrary) store a valid cap
+    uc_reg_write(uc, UC_ARM64_REG_C1, &c1);
+    uc_reg_write(uc, UC_ARM64_REG_CSP, &csp);
+
+    // emulate machine code in infinite time (last param = 0), or when
+    // finishing all the code.
+    err = uc_emu_start(uc, ADDRESS,
+                       ADDRESS + sizeof(ARM64C_MEM_CAP_CODE) - 4 - 1, 0, 0);
+    if (err) {
+        printf("Failed on uc_emu_start() with error returned: %u\n", err);
+    }
+
+    // now print out some registers
+    printf(
+        ">>> Emulation done. Below is the CPU context (valid cap we wrote)\n");
+    uc_reg_read(uc, UC_ARM64_REG_C1, &c1);
+    printf(">>> C1 = ");
+    print_capability(&c1);
+
+    uc_close(uc);
+}
 
 static void test_arm64c(void)
 {
@@ -351,7 +493,9 @@ static void test_arm64c_mem_cap()
     csp.top = ADDRESS + 0x100;
     csp.tag = 1;
     csp.uperms = 0;
-    csp.perms = UC_CHERI_PERM_LOAD | UC_CHERI_PERM_STORE | UC_CHERI_PERM_LOAD_CAP | UC_CHERI_PERM_STORE_CAP | UC_CHERI_PERM_STORE_LOCAL;
+    csp.perms = UC_CHERI_PERM_LOAD | UC_CHERI_PERM_STORE |
+                UC_CHERI_PERM_LOAD_CAP | UC_CHERI_PERM_STORE_CAP |
+                UC_CHERI_PERM_STORE_LOCAL;
     csp.otype = UC_CHERI_OTYPE_UNSEALED;
 
     printf("Emulate ARM64 C64 code (memory load and store caps)\n");
@@ -452,7 +596,8 @@ static void test_update_pcc()
     printf(">>> Restricting PCC\n");
     pcc.base = ADDRESS;
     pcc.top = ADDRESS + sizeof(ARM64C_ADD_CODE);
-    pcc.perms = UC_CHERI_PERMS_ALL ^ UC_CHERI_PERM_LOAD; // XXXR3: this doesn't raise any errors
+    pcc.perms = UC_CHERI_PERMS_ALL ^
+                UC_CHERI_PERM_LOAD; // XXXR3: this doesn't raise any errors
     uc_reg_write(uc, UC_ARM64_REG_PCC, &pcc);
     printf(">>> Restricted PCC: ");
     uc_reg_read(uc, UC_ARM64_REG_PCC, &pcc);
@@ -460,7 +605,8 @@ static void test_update_pcc()
 
     // emulate machine code in infinite time (last param = 0), or when
     // finishing all the code.
-    err = uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_ADD_CODE) - 1, 0, 0);
+    err =
+        uc_emu_start(uc, ADDRESS, ADDRESS + sizeof(ARM64C_ADD_CODE) - 1, 0, 0);
     if (err) {
         printf("Failed on uc_emu_start() with error returned: %u\n", err);
     }
@@ -474,6 +620,12 @@ static void test_update_pcc()
 int main(int argc, char **argv, char **envp)
 {
     test_arm64c_mem_fetch();
+
+    printf("-------------------------\n");
+    test_arm64c_mem_fetch_cap();
+
+    printf("-------------------------\n");
+    test_arm64c_mem_write_cap();
 
     printf("-------------------------\n");
     test_arm64c();

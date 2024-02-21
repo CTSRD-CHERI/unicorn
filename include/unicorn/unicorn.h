@@ -194,6 +194,7 @@ typedef enum uc_err {
     UC_ERR_HOOK_EXIST,      // hook for this event already existed
     UC_ERR_RESOURCE,        // Insufficient resource: uc_emu_start()
     UC_ERR_EXCEPTION,       // Unhandled CPU exception
+    // XXXR3: todo, add CHERI exceptions
 } uc_err;
 
 /*
@@ -813,6 +814,13 @@ uc_err uc_mem_write(uc_engine *uc, uint64_t address, const void *bytes,
 */
 UNICORN_EXPORT
 uc_err uc_mem_read(uc_engine *uc, uint64_t address, void *bytes, size_t size);
+
+UNICORN_EXPORT
+uc_err uc_mem_write_cap(uc_engine *uc, uint64_t address,
+                        const uc_cheri_cap *cap);
+
+UNICORN_EXPORT
+uc_err uc_mem_read_cap(uc_engine *uc, uint64_t address, uc_cheri_cap *cap);
 
 /*
  Emulate machine code in a specific duration of time.

@@ -1,8 +1,5 @@
-- APIs for decoding permissions and object types
-- Implement uc_mem_write_cap
 - Coprocessor registers
 - Demonstrate hooking CHERI exceptions
 
 Lower priority:
 - Write simple unit tests
-- Write bindings tests

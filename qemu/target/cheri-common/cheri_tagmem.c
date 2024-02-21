@@ -581,6 +581,37 @@ void *cheri_tag_set(CPUArchState *env, target_ulong vaddr, int reg,
     return host_addr;
 }
 
+void *cheri_tag_set_raw(CPUArchState *env, target_ulong vaddr,
+                        uintptr_t pc, int mmu_idx)
+{
+    struct uc_struct *uc = env->uc;
+    /*
+     * This attempt to resolve a virtual address may cause both a data store
+     * TLB fault (entry missing or D bit clear) and a capability store TLB
+     * fault (SC bit set).
+     */
+    // Note: this probe will handle any store cap faults
+    void *host_addr = probe_cap_write(env, vaddr, CHERI_CAP_SIZE, mmu_idx, pc);
+
+    if (unlikely(!host_addr)) {
+        return NULL;
+    }
+
+    uintptr_t tagmem_flags;
+    void *tagmem = get_tagmem_from_iotlb_entry(env, vaddr, mmu_idx,
+                                               /*write=*/true, &tagmem_flags);
+
+    /* Clear + ALL_ZERO_TAGBLK means no tags can be stored here. */
+    if ((tagmem_flags & TLBENTRYCAP_FLAG_CLEAR) &&
+        (tagmem == ALL_ZERO_TAGBLK)) {
+        return host_addr;
+    }
+
+    target_ulong tag_offset = page_vaddr_to_tag_offset(env, vaddr);
+    tagblock_set_tag_tagmem(tagmem, tag_offset);
+    return host_addr;
+}
+
 bool cheri_tag_get(CPUArchState *env, target_ulong vaddr, int reg,
                    hwaddr *ret_paddr, int *prot, uintptr_t pc, int mmu_idx,
                    void *host_addr)
@@ -622,6 +653,33 @@ bool cheri_tag_get(CPUArchState *env, target_ulong vaddr, int reg,
     // qemu_maybe_log_instr_extra(
     //     env, "    Cap Tag Read [" TARGET_FMT_lx "/" RAM_ADDR_FMT "] -> %d\n",
     //     vaddr, qemu_ram_addr_from_host(host_addr), result);
+    return result;
+}
+
+bool cheri_tag_get_raw(CPUArchState *env, target_ulong vaddr, int *prot, int mmu_idx)
+{
+    uintptr_t tagmem_flags;
+    void *tagmem = get_tagmem_from_iotlb_entry(env, vaddr, mmu_idx,
+                                               /*write=*/false, &tagmem_flags);
+
+    if (prot) {
+        *prot = 0;
+        if (tagmem_flags & TLBENTRYCAP_FLAG_CLEAR) {
+            *prot |= PAGE_LC_CLEAR;
+        }
+        if (tagmem_flags & TLBENTRYCAP_FLAG_TRAP) {
+            *prot |= PAGE_LC_TRAP;
+        }
+        if (tagmem_flags & TLBENTRYCAP_FLAG_TRAP_ANY) {
+            *prot |= PAGE_LC_TRAP_ANY;
+        }
+    }
+
+    bool result =
+        (tagmem == ALL_ZERO_TAGBLK)
+            ? 0
+            : tagblock_get_tag_tagmem(tagmem, page_vaddr_to_tag_offset(env, vaddr));
+
     return result;
 }
 

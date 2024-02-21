@@ -62,7 +62,7 @@ typedef struct _mmio_cbs {
 typedef uc_err (*query_t)(struct uc_struct *uc, uc_query_type type,
                           size_t *result);
 
-// return 0 on success, -1 on failure
+// return 0 on success, other uc_err on failure
 typedef int (*reg_read_t)(struct uc_struct *uc, unsigned int *regs, void **vals,
                           int count);
 typedef int (*reg_write_t)(struct uc_struct *uc, unsigned int *regs,
@@ -84,6 +84,12 @@ typedef bool (*uc_write_mem_t)(AddressSpace *as, hwaddr addr,
 
 typedef bool (*uc_read_mem_t)(AddressSpace *as, hwaddr addr, uint8_t *buf,
                               int len);
+
+// return 0 on success, other uc_err on failure
+typedef int (*uc_write_mem_cap_t)(struct uc_struct *uc, uint64_t address,
+                                  const uc_cheri_cap *cap);
+typedef int (*uc_read_mem_cap_t)(struct uc_struct *uc, uint64_t address,
+                                 uc_cheri_cap *cap);
 
 typedef void (*uc_args_void_t)(void *);
 
@@ -270,6 +276,10 @@ struct uc_struct {
 
     uc_write_mem_t write_mem;
     uc_read_mem_t read_mem;
+    // XXXR3: only available for CHERI enabled targets
+    uc_write_mem_cap_t write_mem_cap;
+    uc_read_mem_cap_t read_mem_cap;
+
     uc_args_void_t release;  // release resource when uc_close()
     uc_args_uc_u64_t set_pc; // set PC for tracecode
     uc_get_pc_t get_pc;
